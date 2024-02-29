@@ -35,23 +35,63 @@
  */
 int XpnGetBlock(int fd, off_t offset, int replication, off_t *local_offset, int *serv)
 {	
+	int replication_level = xpn_file_table[fd]->part->replication_level;
 	int block = offset / xpn_file_table[fd]->block_size;
-	int block_replication = block * (xpn_file_table[fd]->part->replication_level + 1) + replication;
-	int block_line = block_replication / xpn_file_table[fd]->part->data_nserv;
+
+	// Build stair
+	// Example stair repl 1
+	// 1 1
+	//   2 2
+	//     3 3
+	//       4 4
+	int blockX = block + replication;
+	int blockY = block;
+	// XPN_DEBUG("Replication_level %d",replication_level);
+	// XPN_DEBUG("Build stair x:y %d:%d",blockX,blockY);
+	
+	// Colapse stair
+	// Example stair repl 1
+	// 1 1 2 3 4
+	//   2 3 4
+	if (blockX > replication_level)
+		blockY = blockY - (blockX - replication_level);
+	// XPN_DEBUG("Colapse stair x:y %d:%d",blockX,blockY);
+
+	// Fit in server
+	// Example stair repl 1
+	// 1 1 2
+	//   2 3
+	// 3 4
+	// 4
+	int block_line = blockX / xpn_file_table[fd]->part->data_nserv;
+	blockX = blockX % xpn_file_table[fd]->part->data_nserv;
+	blockY = blockY + block_line * (replication_level + 1);
+	// XPN_DEBUG("Fit in server x:y %d:%d",blockX,blockY);
+
+
+	// Colapse fit in server
+	// Example stair repl 1
+	// 1 1 2
+	// 3 2 3
+	// 4 4
+	if (blockX < replication_level && blockY > replication_level)
+		blockY = blockY - (replication_level - blockX);
+
+	// XPN_DEBUG("Colapse fit in server x:y %d:%d",blockX,blockY);
 	
 	// Calculate the server	
-	(*serv) = (block_replication) % xpn_file_table[fd]->part->data_nserv;
+	(*serv) = blockX;
 	
 	// Calculate the offset in the server
-	(*local_offset) = block_line * xpn_file_table[fd]->block_size + (offset % xpn_file_table[fd]->block_size);
-	XPN_DEBUG("offset(%lld) -> local_offset = %lld, serv = %d, repl = %d do=%d", (long long)offset, (long long)(*local_offset), *serv, replication, xpn_file_table[fd]->part->data_serv[*serv].error);
+	(*local_offset) = blockY * xpn_file_table[fd]->block_size + (offset % xpn_file_table[fd]->block_size);
+	XPN_DEBUG("offset(%lld) -> local_offset = %lld, serv = %d, repl = %d do=%d x:y %d:%d", (long long)offset, (long long)(*local_offset), *serv, replication, xpn_file_table[fd]->part->data_serv[*serv].error,blockX,blockY);
 	return 0;
 }
 
 /**
  * Calculates the offset (in file) of the given offset (file in server) of a file with replication.
  *
- * @param fd[in] A file descriptor.
+ * @param part[in] The part of the file.
  * @param serv[in] The server in which is located the given offset.
  * @param local_offset[in] The offset in the server.
  * @param offset[out] The original offset.
@@ -61,19 +101,56 @@ int XpnGetBlock(int fd, off_t offset, int replication, off_t *local_offset, int 
 int XpnGetBlockInvert(struct xpn_partition *part, int serv, off_t local_offset, off_t *offset)
 {
 	int added_size;
+	int replication_level = part->replication_level;
 	if (local_offset % part->block_size == 0){
 		added_size = 0;
 	}else{
 		added_size = part->block_size - (local_offset % part->block_size);
 	}
-    int block_line = (local_offset + added_size) / part->block_size;
-
-	int block_replication = (block_line-1) * part->data_nserv + (serv+1);
 	
-	// round up
-    int block = 1 + ((block_replication - 1) / (part->replication_level + 1));
+	// XPN_DEBUG("added_size %d",added_size);
+	// XPN_DEBUG("Replication_level %d",replication_level);
+	// Start in colapse fit in server
+	// Example stair repl 1
+	// 1 1 2
+	// 3 2 3
+	// 4 4
+    int blockY = (local_offset + added_size) / part->block_size;
+    blockY--;
+	int blockX = serv;
+	// XPN_DEBUG("Colapse fit in server x:y %d:%d",blockX,blockY);
 
-    (*offset) = block * part->block_size - added_size;
+
+	// Reverse Fit in server
+	// Example stair repl 1
+	// 1 1 2
+	//   2 3
+	// 3 4
+	// 4
+	if (blockX < replication_level && blockY >= replication_level)
+		blockY = blockY + (replication_level - blockX);
+	// XPN_DEBUG("Fit in server x:y %d:%d",blockX,blockY);
+
+	// Reverse Colapse stair
+	// Example stair repl 1
+	// 1 1 2 3 4
+	//   2 3 4
+	
+	blockX = blockX + ((blockY / (replication_level + 1)) * part->data_nserv);
+	blockY = (blockY % (replication_level + 1));
+	// XPN_DEBUG("Colapse stair x:y %d:%d",blockX,blockY);
+
+	// Reverse Build stair
+	// Example stair repl 1
+	// 1 1
+	//   2 2
+	//     3 3
+	//       4 4
+	if (blockX > replication_level)
+		blockY = blockY + (blockX - replication_level);
+	// XPN_DEBUG("Build stair x:y %d:%d",blockX,blockY);
+	
+    (*offset) = (blockY+1) * part->block_size - added_size;
 	XPN_DEBUG("offset(%lld) -> local_offset = %lld, serv = %d, do=%d", (long long)(*offset), (long long)local_offset, serv, part->data_serv[serv].error);
 	return 0;
 }
@@ -487,4 +564,57 @@ ssize_t XpnWriteGetTotalBytes(ssize_t *res_v, int num_servers, struct nfi_worker
 		return total_write;
 
 	return res;
+}
+
+/**
+ * Calculates the real size in bytes of a file.
+ *
+ * @param part[in] The part of the file.
+ * @param attr[in] The response array of the servers.
+ * @param n_serv[in] The number of servers.
+ *
+ * @return Returns real size in bytes.
+ */
+ssize_t XpnGetRealFileSize(struct xpn_partition *part, struct nfi_attr *attr, int n_serv)
+{
+	int i=0;
+	int serv_to_calc = 0;
+	// Check if have incomplete blocks
+	int have_incompete_blocks = 0;
+	for(i=0;i<n_serv;i++){
+		XPN_DEBUG("attr[%d].at_size %ld",i,attr[i].at_size);
+		if (attr[i].at_size != 0 &&
+		(attr[i].at_size - XPN_HEADER_SIZE) % part->block_size != 0){
+		have_incompete_blocks = 1;
+		serv_to_calc = i;
+		break;
+		}
+	}
+	// Get serv with the last block if it not have incomplete blocks
+	if (!have_incompete_blocks)
+	{
+		// With replication the last block is the bigger from right to left
+		if (part->replication_level > 0)
+		{
+			for(i=n_serv-1;i>=0;i--)
+			{
+				if (attr[i].at_size != 0 &&	attr[i].at_size >= attr[serv_to_calc].at_size){
+					serv_to_calc = i;
+				}
+			}
+		}else
+		{
+		// Without replication the last block is the bigger from letf to right
+			for(i=0;i<n_serv;i++)
+			{
+				if (attr[i].at_size != 0 &&	attr[i].at_size >= attr[serv_to_calc].at_size){
+					serv_to_calc = i;
+				}
+			}
+		}
+	}
+	
+	off_t offset = 0;
+	XpnGetBlockInvert(part, serv_to_calc, attr[serv_to_calc].at_size - XPN_HEADER_SIZE, &offset);
+	return offset;
 }
