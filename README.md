@@ -190,9 +190,7 @@ The typical executions has 3 main steps:
    ./xpn -v -l <full path to the hostfile>  stop
    ```
 
-<details>
-<summary>For Expand developers...</summary>
-Summary:
+For Expand developers...
 
 ```mermaid
 sequenceDiagram
@@ -206,5 +204,4 @@ sequenceDiagram
     XPN client    -->> session: execution ends
     session        ->> xpn_mpi_server: stop the MPI server
 ```
-</details>
 
