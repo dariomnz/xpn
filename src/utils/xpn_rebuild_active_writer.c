@@ -180,7 +180,7 @@ int copy(char *entry, int is_file, int blocksize, int replication_level, int ran
                 if (offset_src == -666) {
                     break;
                 }
-                ret_2 = real_posix_lseek64(fd_src, offset_src + HEADER_SIZE, SEEK_SET);
+                ret_2 = lseek64(fd_src, offset_src + HEADER_SIZE, SEEK_SET);
                 if (ret_2 < 0) {
                     perror("lseek");
                     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -210,7 +210,7 @@ int copy(char *entry, int is_file, int blocksize, int replication_level, int ran
                     break;
                 }
 
-                ret_2 = real_posix_lseek64(fd_dest, offset_dest + HEADER_SIZE, SEEK_SET);
+                ret_2 = lseek64(fd_dest, offset_dest + HEADER_SIZE, SEEK_SET);
                 if (ret_2 < 0) {
                     perror("lseek: ");
                     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -326,7 +326,7 @@ int list(char *dir_name, int blocksize, int replication_level, int rank, int siz
             }
             copy(path, is_file, blocksize, replication_level, rank, size);
 
-            if (S_ISDIR(stat_buf.st_mode)) {
+            if (!is_file) {
                 list(path, blocksize, replication_level, rank, size);
             }
 
@@ -368,6 +368,10 @@ int list(char *dir_name, int blocksize, int replication_level, int rank, int siz
                 MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
             }
             copy(path, is_file, blocksize, replication_level, rank, size);
+
+            if (!is_file) {
+                list(path, blocksize, replication_level, rank, size);
+            }
         }
     }
 

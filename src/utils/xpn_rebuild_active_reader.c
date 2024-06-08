@@ -175,7 +175,7 @@ int copy(char *entry, int is_file, int blocksize, int replication_level, int ran
                 XpnCalculateBlock(blocksize, replication_level, new_size, offset_real, replication, &offset_dest,
                                   &rank_to_send);
 
-                ret_2 = real_posix_lseek64(fd_src, offset_src + HEADER_SIZE, SEEK_SET);
+                ret_2 = lseek64(fd_src, offset_src + HEADER_SIZE, SEEK_SET);
                 if (ret_2 < 0) {
                     perror("lseek");
                     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -200,7 +200,7 @@ int copy(char *entry, int is_file, int blocksize, int replication_level, int ran
                 MPI_Recv(&read_size, 1, MPI_LONG, status.MPI_SOURCE, TAG_READ_SIZE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 MPI_Recv(buf, read_size, MPI_CHAR, status.MPI_SOURCE, TAG_BUF, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                ret_2 = real_posix_lseek64(fd_dest, offset_dest + HEADER_SIZE, SEEK_SET);
+                ret_2 = lseek64(fd_dest, offset_dest + HEADER_SIZE, SEEK_SET);
                 if (ret_2 < 0) {
                     perror("lseek: ");
                     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -316,7 +316,7 @@ int list(char *dir_name, int blocksize, int replication_level, int rank, int siz
             }
             copy(path, is_file, blocksize, replication_level, rank, size);
 
-            if (S_ISDIR(stat_buf.st_mode)) {
+            if (!is_file) {
                 list(path, blocksize, replication_level, rank, size);
             }
 
@@ -358,6 +358,10 @@ int list(char *dir_name, int blocksize, int replication_level, int rank, int siz
                 MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
             }
             copy(path, is_file, blocksize, replication_level, rank, size);
+
+            if (!is_file) {
+                list(path, blocksize, replication_level, rank, size);
+            }
         }
     }
 
