@@ -197,7 +197,11 @@ namespace XPN
                 res = aux_res;
             }
         }
-
+        #ifdef USE_ROCKSDB
+        if (res >= 0){
+            write_metadata(file.m_mdata, false);
+        }
+        #endif
         XPN_DEBUG_END_CUSTOM(path<<", "<<perm);
         return res;
     }

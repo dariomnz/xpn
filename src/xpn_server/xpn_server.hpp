@@ -27,6 +27,7 @@
 #include "base_cpp/workers.hpp"
 #include "xpn/xpn_stats.hpp"
 
+#include "rocksdb/db.h"
 
 namespace XPN
 {
@@ -57,6 +58,11 @@ namespace XPN
         std::atomic_bool m_disconnect = {false};
         std::atomic_int64_t m_clients = {0};
 
+    #ifdef USE_ROCKSDB
+        rocksdb::DB* m_db;
+        std::string m_rocksdb_path = "/dev/shm/xpn_server_rocksdb";
+    #endif
+
     public:
         // File operations
         void op_open        ( xpn_server_comm &comm, st_xpn_server_path_flags   &head, int rank_client_id, int tag_client_id );
@@ -79,9 +85,11 @@ namespace XPN
         void op_rmdir_async ( xpn_server_comm &comm, st_xpn_server_path         &head, int rank_client_id, int tag_client_id );
 
         // FS Operations
-        void op_statvfs      ( xpn_server_comm &comm, st_xpn_server_path        &head, int rank_client_id, int tag_client_id ); //TODO: implement
+        void op_statvfs      ( xpn_server_comm &comm, st_xpn_server_path        &head, int rank_client_id, int tag_client_id );
 
         // Metadata
+        int read_mdata(const char* path, xpn_metadata::data& mdata);
+        int write_mdata(const char* path, xpn_metadata::data& mdata);
         void op_read_mdata   ( xpn_server_comm &comm, st_xpn_server_path        &head, int rank_client_id, int tag_client_id );
         void op_write_mdata  ( xpn_server_comm &comm, st_xpn_server_write_mdata &head, int rank_client_id, int tag_client_id );
         void op_write_mdata_file_size  ( xpn_server_comm &comm, st_xpn_server_write_mdata_file_size &head, int rank_client_id, int tag_client_id );

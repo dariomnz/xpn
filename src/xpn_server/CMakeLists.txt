@@ -9,7 +9,7 @@ file(GLOB_RECURSE XPN_SERVER_SOURCE
 
 add_executable(xpn_server ${XPN_SERVER_SOURCE})
 
-target_link_libraries(xpn_server PRIVATE xpn_base_c xpn_base_cpp lfi)
+target_link_libraries(xpn_server PRIVATE xpn_base_c xpn_base_cpp lfi rocksdb)
 
 target_include_directories(xpn_server PRIVATE
     "${PROJECT_SOURCE_DIR}/src"

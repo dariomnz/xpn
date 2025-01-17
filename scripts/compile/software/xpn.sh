@@ -1,5 +1,5 @@
 #!/bin/bash
-#set -x
+set -e
 
 #
 #  Copyright 2020-2024 Felix Garcia Carballeira, Diego Camarmas Alonso, Alejandro Calderon Mateos
@@ -89,13 +89,13 @@ echo " * XPN mpi: $MPICC_PATH"
 echo " * XPN libfabric: $LIBFABRIC_PATH"
 pushd .
 cd "$SRC_PATH"
-rm -r build
+# rm -r build
 mkdir -p build
 cd build
 
 cmake -S .. -B . -D BUILD_TESTS=ON -D CMAKE_INSTALL_PREFIX="${INSTALL_PATH}/xpn" -D CMAKE_C_COMPILER="${MPICC_PATH}"/mpicc -D CMAKE_CXX_COMPILER="${MPICC_PATH}"/mpicxx -D ENABLE_FABRIC_SERVER="${LIBFABRIC_PATH}"
 
-cmake --build . -j
+cmake --build . -j "$(nproc)"
 
 cmake --install .
 

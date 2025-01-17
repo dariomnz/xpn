@@ -30,6 +30,8 @@
 
 #include "xpn_server.hpp"
 
+#include "rocksdb/options.h"
+
 namespace XPN
 {
 
@@ -190,10 +192,25 @@ xpn_server::xpn_server(int argc, char *argv[]) : m_params(argc, argv)
     if (xpn_env::get_instance().xpn_stats){
         m_window_stats = std::make_unique<xpn_window_stats>(m_stats);
     }
+    #ifdef USE_ROCKSDB
+    rocksdb::Options options;
+    // Optimize RocksDB. This is the easiest way to get RocksDB to perform well
+    options.IncreaseParallelism();
+    options.OptimizeLevelStyleCompaction();
+    // create the DB if it's not already present
+    options.create_if_missing = true;
+
+    // open DB
+    rocksdb::Status s = rocksdb::DB::Open(options, m_rocksdb_path, &m_db);
+    assert(s.ok());
+    #endif
 }
 
 xpn_server::~xpn_server()
 {
+    #ifdef USE_ROCKSDB
+    delete m_db;
+    #endif
 }
 
 // Start servers

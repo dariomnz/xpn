@@ -1,0 +1,5 @@
+
+add_executable(rocksdb_simple_example rocksdb_simple_example.cpp)
+target_link_libraries(rocksdb_simple_example rocksdb)
+
+install(TARGETS rocksdb_simple_example RUNTIME DESTINATION test/integrity/xpn_metadata)

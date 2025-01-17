@@ -4,3 +4,6 @@
 [submodule "libs/lfi"]
 	path = libs/lfi
 	url = https://github.com/dariomnz/lfi.git
+[submodule "libs/rocksdb"]
+	path = libs/rocksdb
+	url = https://github.com/facebook/rocksdb.git

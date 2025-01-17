@@ -59,9 +59,10 @@ namespace XPN
         }
 
         std::shared_ptr<xpn_file> file = std::make_shared<xpn_file>(file_path, m_partitions.at(part_name));
-
+        #ifndef USE_ROCKSDB
         if ((O_DIRECTORY != (flags & O_DIRECTORY)))
         {
+        #endif
             res = read_metadata(file->m_mdata);
             if (res < 0 && O_CREAT != (flags & O_CREAT)){
                 XPN_DEBUG_END_CUSTOM(path<<", "<<flags<<", "<<mode);
@@ -71,7 +72,9 @@ namespace XPN
             if(!file->m_mdata.m_data.is_valid()){
                 file->m_mdata.m_data.fill(file->m_mdata);
             }
+        #ifndef USE_ROCKSDB
         }
+        #endif
 
         if ((O_CREAT == (flags & O_CREAT))){
 
@@ -99,10 +102,14 @@ namespace XPN
                 }
             }
 
+            #ifndef USE_ROCKSDB
             if ((O_DIRECTORY != (flags & O_DIRECTORY)))
             {
+            #endif
                 write_metadata(file->m_mdata, false);
+            #ifndef USE_ROCKSDB
             }
+            #endif
         }else{
             int master_file = file->m_mdata.master_file();
             std::future<int> fut;

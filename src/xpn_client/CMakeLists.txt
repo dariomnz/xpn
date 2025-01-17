@@ -1,4 +1,5 @@
 
+link_libraries(lfi)
 add_subdirectory(nfi)
 add_subdirectory(xpn)
 

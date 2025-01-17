@@ -28,6 +28,9 @@
 #include <string>
 #include <cstdlib>
 #include <thread>
+
+#include "rocksdb/slice.h"
+
 namespace XPN
 {
 
@@ -583,14 +586,81 @@ void xpn_server::op_rmdir_async ( [[maybe_unused]] xpn_server_comm &comm, struct
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_rmdir_async] << End");
 }
 
+template <typename T>
+std::string Pack(const T& data)
+{
+  std::string d(sizeof(T), '\0');
+  memcpy(d.data(), &data, d.size());
+  return d;
+}
+
+template <typename T>
+bool Unpack(T& pack, const std::string& data)
+{
+  if (data.size() != sizeof(T)){
+    return false;
+  }
+  memcpy(&pack, data.data(), data.size());
+  return true;
+}
+
+std::string path_to_key(const char* path)
+{
+  return std::filesystem::weakly_canonical(path).string();
+}
+
+int xpn_server::read_mdata(const char* path, xpn_metadata::data& mdata)
+{
+  #ifdef USE_ROCKSDB
+  std::string string_val(sizeof(mdata), '\0');
+  // rocksdb::PinnableSlice pinnable_val((const char*)&mdata, sizeof(mdata));
+  std::string key = path_to_key(path);
+  debug_info("[Server] [XPN_SERVER_OPS] [read_mdata] key '"<<key<<"'");
+  rocksdb::Status status = m_db->Get(rocksdb::ReadOptions(), m_db->DefaultColumnFamily(), key, &string_val);
+  debug_info("[Server] [XPN_SERVER_OPS] [read_mdata] status '"<<status.ToString()<<"'");
+  if (status.IsNotFound()){
+    debug_info("[Server] [XPN_SERVER_OPS] [read_mdata] status not found");
+    return -1;
+  }
+  if (!Unpack(mdata, string_val)){
+    debug_info("[Server] [XPN_SERVER_OPS] [read_mdata] Error unpack");
+    return -1;
+  }
+  debug_info("[Server] [XPN_SERVER_OPS] [read_mdata] mdata '"<<mdata.to_string()<<"'");
+
+  return sizeof(mdata);
+  #else
+  return 0;
+  #endif
+}
+
+int xpn_server::write_mdata(const char* path, xpn_metadata::data& mdata)
+{  
+  #ifdef USE_ROCKSDB
+  std::string key = path_to_key(path);
+  debug_info("[Server=] [XPN_SERVER_OPS] [write_mdata] key '"<<key<<"'");
+  debug_info("[Server=] [XPN_SERVER_OPS] [write_mdata] mdata '"<<mdata.to_string()<<"'");
+  rocksdb::Status status = m_db->Put(rocksdb::WriteOptions(), key, Pack(mdata));
+  debug_info("[Server=] [XPN_SERVER_OPS] [write_mdata] status '"<<status.ToString()<<"'");
+  if (!status.ok()){
+    debug_info("[Server=] [XPN_SERVER_OPS] [write_mdata] status not ok");
+    return -1;
+  }
+  return sizeof(mdata);
+  #else
+  return 0;
+  #endif
+}
+
 void xpn_server::op_read_mdata   ( xpn_server_comm &comm, st_xpn_server_path &head, int rank_client_id, int tag_client_id )
 {
-  int ret, fd;
+  int ret;
+  int fd;
   struct st_xpn_server_read_mdata_req req;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_mdata] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_mdata] read_mdata("<<head.path<<")");
-
+  #ifndef USE_ROCKSDB
   fd = filesystem_open(head.path, O_RDWR);
   if (fd < 0){
     if (errno == EISDIR){
@@ -611,6 +681,11 @@ void xpn_server::op_read_mdata   ( xpn_server_comm &comm, st_xpn_server_path &he
   }
 
   filesystem_close(fd); //TODO: think if necesary check error in close
+  #else
+
+  ret = read_mdata(head.path, req.mdata);
+  #endif
+
 
 cleanup_xpn_server_op_read_mdata:
   req.status.ret = ret;
@@ -624,12 +699,13 @@ cleanup_xpn_server_op_read_mdata:
 
 void xpn_server::op_write_mdata ( xpn_server_comm &comm, st_xpn_server_write_mdata &head, int rank_client_id, int tag_client_id )
 {
-  int ret, fd;
+  int ret;
+  int fd;
   struct st_xpn_server_status req;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] write_mdata("<<head.path<<")");
-
+  #ifndef USE_ROCKSDB
   fd = filesystem_open2(head.path, O_WRONLY | O_CREAT, S_IRWXU);
   if (fd < 0){
     if (errno == EISDIR){
@@ -643,14 +719,16 @@ void xpn_server::op_write_mdata ( xpn_server_comm &comm, st_xpn_server_write_mda
   ret = filesystem_write(fd, &head.mdata, sizeof(head.mdata));
 
   filesystem_close(fd); //TODO: think if necesary check error in close
-
+  #else
+  ret = write_mdata(head.path, head.mdata);
+  #endif
 cleanup_xpn_server_op_write_mdata:
   req.ret = ret;
   req.server_errno = errno;
 
   comm.write_data((char *)&req,sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
 
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] write_mdata("<<head.path<<")=%d"<< req.ret);
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] write_mdata("<<head.path<<")="<< req.ret);
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] << End");
 
 }
@@ -659,7 +737,8 @@ pthread_mutex_t op_write_mdata_file_size_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void xpn_server::op_write_mdata_file_size ( xpn_server_comm &comm, st_xpn_server_write_mdata_file_size &head, int rank_client_id, int tag_client_id )
 {
-  int ret, fd;
+  int ret;
+  int fd;
   uint64_t actual_file_size = 0;
   struct st_xpn_server_status req;
 
@@ -668,7 +747,7 @@ void xpn_server::op_write_mdata_file_size ( xpn_server_comm &comm, st_xpn_server
   
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] mutex lock");
   pthread_mutex_lock(&op_write_mdata_file_size_mutex);
-
+  #ifndef USE_ROCKSDB
   fd = filesystem_open(head.path, O_RDWR);
   if (fd < 0){
     if (errno == EISDIR){
@@ -689,6 +768,15 @@ void xpn_server::op_write_mdata_file_size ( xpn_server_comm &comm, st_xpn_server
 
   filesystem_close(fd); //TODO: think if necesary check error in close
 
+  #else
+  xpn_metadata::data mdata;
+  ret = read_mdata(head.path, mdata);
+  if (ret > 0 && mdata.file_size < head.size){
+    mdata.file_size = head.size;
+    ret = write_mdata(head.path, mdata);
+  }
+
+  #endif
 cleanup_xpn_server_op_write_mdata_file_size:
 
   pthread_mutex_unlock(&op_write_mdata_file_size_mutex);
