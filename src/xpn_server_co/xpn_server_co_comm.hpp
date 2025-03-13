@@ -19,25 +19,33 @@
  *
  */
 
-#include "workers.hpp"
+#pragma once
 
-#include <iostream>
+#include <memory>
 
-#include "workers_sequential.hpp"
-#include "workers_pool.hpp"
-#include "workers_on_demand.hpp"
+#include "coroutine/xpn_coroutine.hpp"
+#include "xpn_server_ops.hpp"
+#include "xpn_server_params.hpp"
 
-namespace XPN
-{
-    std::unique_ptr<workers> workers::Create(workers_mode mode, bool with_limits)
-    {
-        switch (mode)
-        {
-            case workers_mode::sequential: return std::make_unique<workers_sequential>();
-            case workers_mode::thread_pool: return std::make_unique<workers_pool>(with_limits);
-            case workers_mode::thread_on_demand: return std::make_unique<workers_on_demand>(with_limits);
-            default: std::cerr<<"Error: workers mode '"<<static_cast<int>(mode)<<"' not defined"<<std::endl; break;
-        }
-        return nullptr;
-    }
-} // namespace XPN
+namespace XPN {
+
+class xpn_server_co_comm {
+   public:
+    static task<int64_t> read_operation(xpn_server_msg &msg, int comm_id, int &tag_client_id);
+    static task<int64_t> read_data(void *data, int64_t size, int comm_id, int tag_client_id);
+    static task<int64_t> write_data(const void *data, int64_t size, int comm_id, int tag_client_id);
+};
+
+class xpn_server_co_control_comm {
+   public:
+    xpn_server_co_control_comm();
+    ~xpn_server_co_control_comm();
+
+    task<int> accept(int socket);
+    void disconnect(int comm_id);
+
+   private:
+    int m_server_comm;
+    std::string m_port_name = std::string(MAX_PORT_NAME, '\0');
+};
+}  // namespace XPN

@@ -183,7 +183,7 @@ int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
     msg.tag = (int)(pthread_self() % 32450) + 1;
 
     // Send message
-    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] Write operation send tag "<< msg[0]);
+    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] Write operation send tag "<< msg.tag);
 
     ret = socket::send(m_socket, &msg, msg.get_size());
     if (ret < 0) {

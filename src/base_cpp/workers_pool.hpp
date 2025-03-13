@@ -33,7 +33,7 @@ namespace XPN
     class workers_pool : public workers
     {
     public:
-        workers_pool();
+        workers_pool(bool with_limits);
         ~workers_pool();
 
         std::future<int> launch(std::function<int()> task) override;

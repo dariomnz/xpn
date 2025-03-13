@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(XPN VERSION 3.0.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 set(CMAKE_SKIP_RPATH TRUE)
@@ -49,6 +49,7 @@ add_subdirectory(src/base_cpp)
 add_subdirectory(src/bypass)
 add_subdirectory(src/xpn_client)
 add_subdirectory(src/xpn_server)
+add_subdirectory(src/xpn_server_co)
 add_subdirectory(src/xpn_controller)
 add_subdirectory(src/utils)
 

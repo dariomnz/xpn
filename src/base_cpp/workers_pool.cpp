@@ -23,7 +23,7 @@
 
 namespace XPN
 {
-    workers_pool::workers_pool() 
+    workers_pool::workers_pool(bool with_limits) 
     {   
         m_num_threads = std::thread::hardware_concurrency() * 2;
         for (size_t i = 0; i < m_num_threads; ++i) { 
@@ -67,6 +67,10 @@ namespace XPN
                 } 
             }); 
         } 
+
+        if (!with_limits){
+            m_num_threads = INT32_MAX;
+        }
     }
     
     workers_pool::~workers_pool() 

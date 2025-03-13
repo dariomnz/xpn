@@ -120,7 +120,7 @@ int64_t nfi_fabric_server_comm::write_operation(xpn_server_msg& msg) {
     msg.tag = (int)(pthread_self() % 32450) + 1;
 
     // Send message
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_operation] Write operation send tag "<< msg[0]);
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_operation] Write operation send tag "<< msg.tag);
 
     ret = lfi_tsend(m_comm, &msg, msg.get_size(), 0);
     if (ret < 0) {

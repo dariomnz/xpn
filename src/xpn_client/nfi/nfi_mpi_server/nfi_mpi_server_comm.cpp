@@ -248,7 +248,7 @@ int64_t nfi_mpi_server_comm::write_operation(xpn_server_msg& msg) {
     msg.tag = (int)(pthread_self() % 32450) + 1;
 
     // Send message
-    debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_write_operation] Write operation send tag "<< msg[0]);
+    debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_write_operation] Write operation send tag "<< msg.tag);
 
     ret = MPI_Send(&msg, msg.get_size(), MPI_BYTE, 0, 0, m_comm);
     if (MPI_SUCCESS != ret) {

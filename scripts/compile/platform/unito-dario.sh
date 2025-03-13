@@ -37,11 +37,14 @@ FABRIC_PATH=$HOME/dariomnz/bin/libfabric-2.0.0
 INSTALL_PATH=$HOME/dariomnz/bin/
 BASE_PATH=$(dirname $0)
 
+spack load gcc@13.1.0
+
+export CXX="/beegfs/home/javier.garciablas/spack/opt/spack/linux-ubuntu20.04-broadwell/gcc-9.4.0/gcc-13.1.0-5csi3fwipfhhwrxomd2ilsxkx4zzpy5h/bin/g++"
 export LD_LIBRARY_PATH=$HOME/dariomnz/bin/mpich-ch4-fabric/lib:$HOME/dariomnz/bin/libfabric-2.0.0/lib:$LD_LIBRARY_PATH
 export PATH=$HOME/dariomnz/bin/mpich-ch4-fabric/bin:$PATH
 
 # 3) preconfigure build-me...
 $BASE_PATH/../software/xpn.sh         -m $MPICC_PATH -f $FABRIC_PATH -i $INSTALL_PATH -s $BASE_PATH/../../../../xpn
-$BASE_PATH/../software/ior.sh         -m $MPICC_PATH/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../ior
+# $BASE_PATH/../software/ior.sh         -m $MPICC_PATH/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../ior
 # $BASE_PATH/../software/lz4.sh         -m $MPICC_PATH -i $INSTALL_PATH -s $BASE_PATH/../../../../io500/build/pfind/lz4/
 # $BASE_PATH/../software/io500.sh       -m $MPICC_PATH/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../io500
