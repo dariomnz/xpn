@@ -79,6 +79,6 @@ namespace XPN
     #define print(out_format) std::cout << out_format << std::endl;
 
     #define print_error(out_format)                                                                                     \
-            std::cerr << std::dec << "[ERROR] [" << file_name(__FILE__) << ":" << __LINE__ << "] [" << __func__  \
+            std::cerr << std::dec << "[ERROR] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] [" << __func__  \
                     << "] " << out_format << " : " << std::strerror(errno) << std::endl;
 } // namespace XPN

@@ -7,10 +7,12 @@ file(GLOB_RECURSE xpn_server_co_SOURCE
     "*.cpp"
 )
 
+include(FindLibUring.cmake)
+
 # add_compile_options("-DDEBUG")
 add_executable(xpn_server_co ${xpn_server_co_SOURCE})
 
-target_link_libraries(xpn_server_co PRIVATE xpn_base_cpp lfi rt)
+target_link_libraries(xpn_server_co PRIVATE xpn_base_cpp lfi rt liburing)
 
 target_include_directories(xpn_server_co PRIVATE
     "${PROJECT_SOURCE_DIR}/src"

@@ -36,6 +36,7 @@
 #include "lfi.h"
 #include "lfi_async.h"
 #include "lfi_error.h"
+#include "liburing.h"
 #include "xpn_server_ops.hpp"
 #include "xpn_server_params.hpp"
 
@@ -110,10 +111,8 @@ struct task {
         // the final_suspend awaiter on the promise_type above for where this gets used
         handle.promise().precursor = coroutine;
     }
-    
-    bool done() const {
-        return handle.done();
-    }
+
+    bool done() const { return handle.done(); }
 
     // This handle is assigned to when the coroutine itself is suspended (see await_suspend above)
     std::coroutine_handle<promise_type> handle;
@@ -134,12 +133,12 @@ struct double_vector {
    public:
     std::mutex m_mutex;
 
-    size_t size1() { return m_vec1.size(); }
-    K* data1() { return m_vec1.data(); }
-    size_t size2() { return m_vec1.size(); }
-    K* data2() { return m_vec1.data(); }
-    K get1(size_t pos) { return m_vec1[pos]; }
-    V get2(size_t pos) { return m_vec2[pos]; }
+    auto size1() { return m_vec1.size(); }
+    auto data1() { return m_vec1.data(); }
+    auto size2() { return m_vec1.size(); }
+    auto data2() { return m_vec1.data(); }
+    auto get1(size_t pos) { return m_vec1[pos]; }
+    auto get2(size_t pos) { return m_vec2[pos]; }
 
     void append(K value1, V value2) {
         std::unique_lock lock(m_mutex);
@@ -176,6 +175,90 @@ struct double_vector {
     }
 };
 
+struct co_result {
+    void resume(int result) noexcept {
+        debug_info("Stored result in co_result " << result);
+        m_result = result;
+        m_handle.resume();
+    }
+
+    std::coroutine_handle<> m_handle;
+    int m_result = 0;
+};
+
+struct progress_io_uring {
+   private:
+    io_uring ring = {};
+    int cqe_count = 0;
+    bool probe_ops[IORING_OP_LAST] = {};
+
+   public:
+    progress_io_uring(int entries = 128, uint32_t flags = 0) {
+        io_uring_params p = {};
+        p.flags = flags;
+
+        int ret = io_uring_queue_init_params(entries, &ring, &p);
+        if (ret < 0) {
+            print_error("Error io_uring_queue_init_params " << ret);
+            raise(SIGTERM);
+        }
+    }
+    ~progress_io_uring() noexcept { io_uring_queue_exit(&ring); }
+
+    progress_io_uring(const progress_io_uring&) = delete;
+    progress_io_uring& operator=(const progress_io_uring&) = delete;
+
+    io_uring_sqe* io_uring_get_sqe_safe() noexcept {
+        auto* sqe = io_uring_get_sqe(&ring);
+        if (sqe) {
+            return sqe;
+        } else {
+            debug_info(": SQ is full, flushing " << cqe_count << " cqe(s)");
+            io_uring_cq_advance(&ring, cqe_count);
+            cqe_count = 0;
+            io_uring_submit(&ring);
+            sqe = io_uring_get_sqe(&ring);
+            if (sqe) {
+                return sqe;
+            } else {
+                print_error("io_uring_get_sqe return NULL after a submit, this should not happend");
+                raise(SIGTERM);
+                return nullptr;
+            }
+        }
+    }
+
+    void progress_one() {
+        cqe_count = 0;
+        int ret = io_uring_submit(&ring);
+        if (ret > 0){
+            debug_info("io_uring_submit " << ret);
+        }
+
+        const int count = 64;
+        io_uring_cqe* cqes[count];
+        int completion = io_uring_peek_batch_cqe(&ring, cqes, count);
+        if (completion) {
+            debug_info("peek " << completion << " io_uring requests");
+            for (int i = 0; i < completion; i++) {
+                ++cqe_count;
+                auto resumer_ptr = io_uring_cqe_get_data(cqes[i]);
+                debug_info("completed a io_uring coroutine " << resumer_ptr);
+                if (resumer_ptr) {
+                    auto& resum = *reinterpret_cast<co_result*>(resumer_ptr);
+                    resum.resume(cqes[i]->res);
+                }
+            }
+        }
+
+        if (cqe_count > 0) {
+            debug_info("Procesed " << cqe_count << " cqe(s)");
+            io_uring_cq_advance(&ring, cqe_count);
+            cqe_count = 0;
+        }
+    }
+};
+
 class progress_loop {
    public:
     static progress_loop& get_instance() {
@@ -191,17 +274,13 @@ class progress_loop {
             int event_count = epoll_wait(m_epoll_fd, events, MAX_EVENTS, 0);
             if (event_count == -1) {
                 perror("Error en epoll_wait");
-                return;
             }
             for (int i = 0; i < event_count; ++i) {
                 auto handle_ptr = events[i].data.ptr;
                 debug_info("Completed a epoll coroutine " << handle_ptr);
                 if (handle_ptr) {
                     debug_info("Resuming epoll coroutine " << handle_ptr);
-                    m_worker->launch_no_future([handle_ptr]() {
-                        debug_info("[" << std::this_thread::get_id() << "] resume epoll coroutine");
-                        std::coroutine_handle<>::from_address(handle_ptr).resume();
-                    });
+                    std::coroutine_handle<>::from_address(handle_ptr).resume();
                 }
             }
         }
@@ -226,48 +305,45 @@ class progress_loop {
                 m_waiting_aio.remove(completed);
                 if (handle_ptr) {
                     debug_info("Resuming aio coroutine " << handle_ptr);
-                    m_worker->launch_no_future([handle_ptr]() {
-                        debug_info("[" << std::this_thread::get_id() << "] resume aio coroutine");
-                        std::coroutine_handle<>::from_address(handle_ptr).resume();
-                    });
+                    std::coroutine_handle<>::from_address(handle_ptr).resume();
                 }
             }
         }
         {
             std::unique_lock lock(m_waiting_req.m_mutex);
-            if (m_waiting_req.size1() == 0) return;
-            int completed = lfi_wait_any_t(m_waiting_req.data1(), m_waiting_req.size1(), 0);
-
-            if (completed < 0) {
-                if (completed != -LFI_TIMEOUT) {
-                    std::cerr << "Error in lfi_wait_any " << completed << " " << lfi_strerror(completed);
-                }
-            } else {
-                auto handle_ptr = m_waiting_req.get2(completed);
-                debug_info("completed a lfi coroutine " << m_waiting_aio.to_str(completed));
-                lock.unlock();
-                m_waiting_req.remove(completed);
-                if (handle_ptr) {
-                    debug_info("Resuming lfi coroutine " << handle_ptr);
-                    m_worker->launch_no_future([handle_ptr]() {
-                        debug_info("[" << std::this_thread::get_id() << "] resume lfi coroutine");
+            if (m_waiting_req.size1() != 0) {
+                lfi_progress(m_waiting_req.data1(), m_waiting_req.size1());
+            }
+            for (size_t i = 0; i < m_waiting_req.size1(); i++) {
+                if (lfi_request_completed(m_waiting_req.data1()[i])) {
+                    auto handle_ptr = m_waiting_req.get2(i);
+                    debug_info("completed a lfi coroutine " << m_waiting_req.to_str(i));
+                    lock.unlock();
+                    m_waiting_req.remove(i);
+                    i--;
+                    if (handle_ptr) {
+                        debug_info("Resuming lfi coroutine " << handle_ptr);
                         std::coroutine_handle<>::from_address(handle_ptr).resume();
-                    });
+                    }
+                    lock.lock();
                 }
             }
+        }
+        {
+            m_io_uring.progress_one();
         }
     }
 
     int get_epoll_fd() const { return m_epoll_fd; }
     auto& get_waiting_req() { return m_waiting_req; }
     auto& get_waiting_aio() { return m_waiting_aio; }
-    auto& get_worker() { return m_worker; }
+    auto& get_io_uring() { return m_io_uring; }
 
    private:
     int m_epoll_fd;
     double_vector<lfi_request*, void*> m_waiting_req;
     double_vector<aiocb*, void*> m_waiting_aio;
-    std::unique_ptr<workers> m_worker;
+    progress_io_uring m_io_uring;
 
     progress_loop() {
         m_epoll_fd = epoll_create1(0);
@@ -275,9 +351,6 @@ class progress_loop {
             perror("Error al crear epoll");
             exit(EXIT_FAILURE);
         }
-        m_worker = workers::Create(workers_mode::sequential, false);
-        // m_worker = workers::Create(workers_mode::thread_pool, false);
-        // m_worker = workers::Create(workers_mode::thread_on_demand, false);
         aioinit aioinit_s = {};
         aioinit_s.aio_num = 256;
         aioinit_s.aio_idle_time = 10;
@@ -315,6 +388,8 @@ struct LFIReqAwaitable {
     bool await_ready() const noexcept {
         debug_info("LFIReqAwaitable ready");
         if (m_error < 0) return true;
+        lfi_request** request_ptr2 = (lfi_request**)&m_request;
+        lfi_progress(request_ptr2, 1);
         return lfi_request_completed(m_request);
     }
 
@@ -584,11 +659,7 @@ class co_mutex {
         if (!m_queue_vec.empty()) {
             auto next = m_queue_vec[0];
             remove_unordered(m_queue_vec, 0);
-            auto& m_worker = progress_loop::get_instance().get_worker();
-            m_worker->launch_no_future([next]() {
-                debug_info("[" << std::this_thread::get_id() << "] resume co_mutex");
-                std::coroutine_handle<>::from_address(next).resume();
-            });
+            std::coroutine_handle<>::from_address(next).resume();
         } else {
             m_flag.clear();
         }
@@ -597,5 +668,60 @@ class co_mutex {
    private:
     std::atomic_flag m_flag;
     std::vector<void*> m_queue_vec;
+};
+
+struct io_uringAwaitable {
+    io_uring_sqe* m_sqe;
+    co_result m_result;
+
+    io_uringAwaitable() : m_sqe(progress_loop::get_instance().get_io_uring().io_uring_get_sqe_safe()) {
+        debug_info("io_uring_get_sqe_safe " << m_sqe);
+    }
+
+    bool await_ready() const noexcept {
+        debug_info("io_uringAwaitable ready");
+        return false;
+    }
+
+    void await_suspend(std::coroutine_handle<> handle) noexcept {
+        m_result.m_handle = handle;
+        io_uring_sqe_set_data(m_sqe, &m_result);
+        debug_info("io_uringAwaitable stored and suspended " << &m_result);
+    }
+
+    auto await_resume() noexcept {
+        debug_info("io_uringAwaitable resume with result " << m_result.m_result);
+        return m_result.m_result;
+    }
+};
+
+struct ReadAwaitable : public io_uringAwaitable {
+    iovec vec;
+    ReadAwaitable(int fd, void* buf, size_t size, off_t offset) {
+        debug_info("ReadAwaitable (" << fd << ", " << buf << ", " << size << ", " << offset << ")");
+        debug_info("ReadAwaitable sqe " << m_sqe);
+        vec.iov_base = buf;
+        vec.iov_len = size;
+        io_uring_prep_readv(m_sqe, fd, &vec, 1, offset);
+    }
+};
+
+struct WriteAwaitable : public io_uringAwaitable {
+    iovec vec;
+    WriteAwaitable(int fd, const void* buf, size_t size, off_t offset) {
+        debug_info("WriteAwaitable (" << fd << ", " << buf << ", " << size << ", " << offset << ")");
+        debug_info("WriteAwaitable sqe " << m_sqe);
+        vec.iov_base = const_cast<void*>(buf);
+        vec.iov_len = size;
+        io_uring_prep_writev(m_sqe, fd, &vec, 1, offset);
+    }
+};
+
+struct FsyncAwaitable : public io_uringAwaitable {
+    FsyncAwaitable(int fd) {
+        debug_info("FsyncAwaitable (" << fd << ", " << buf << ", " << size << ", " << offset << ")");
+        debug_info("FsyncAwaitable sqe " << m_sqe);
+        io_uring_prep_fsync(m_sqe, fd, 0);
+    }
 };
 }  // namespace XPN

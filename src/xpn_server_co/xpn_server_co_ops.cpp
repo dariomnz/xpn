@@ -256,7 +256,7 @@ task<int> xpn_server_co::op_read(const st_xpn_server_rw &head, int comm_id, int 
             if (xpn_env::get_instance().xpn_stats) {
                 io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_read_disk, to_read);
             }
-            req.size = co_await AIOReadAwaitable(fd, buffer.data(), to_read, head.offset + cont);
+            req.size = co_await ReadAwaitable(fd, buffer.data(), to_read, head.offset + cont);
         }
         // if error then send as "how many bytes" -1
         if (req.size < 0 || req.status.ret == -1) {
@@ -354,7 +354,7 @@ task<int> xpn_server_co::op_write(const st_xpn_server_rw &head, int comm_id, int
             if (xpn_env::get_instance().xpn_stats) {
                 io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_write_disk, to_write);
             }
-            req.size = co_await AIOWriteAwaitable(fd, buffer.data(), to_write, head.offset + cont);
+            req.size = co_await WriteAwaitable(fd, buffer.data(), to_write, head.offset + cont);
         }
         if (req.size < 0) {
             req.status.ret = -1;
@@ -374,7 +374,7 @@ cleanup_xpn_server_op_write:
     req.status.server_errno = errno;
     co_await xpn_server_co_comm::write_data((char *)&req, sizeof(struct st_xpn_server_rw_req), comm_id, tag_client_id);
 
-    co_await AIOFsyncAwaitable(fd);
+    co_await FsyncAwaitable(fd);
 
     if (head.xpn_session == 1) {
         PROXY(fsync)(fd);
@@ -665,7 +665,7 @@ task<int> xpn_server_co::op_read_mdata(const st_xpn_server_path &head, int comm_
         goto cleanup_xpn_server_op_read_mdata;
     }
 
-    ret = co_await AIOReadAwaitable(fd, &req.mdata, sizeof(req.mdata), 0);
+    ret = co_await ReadAwaitable(fd, &req.mdata, sizeof(req.mdata), 0);
 
     if (!req.mdata.is_valid()) {
         req.mdata = {};
@@ -745,12 +745,12 @@ task<int> xpn_server_co::op_write_mdata_file_size(const st_xpn_server_write_mdat
         goto cleanup_xpn_server_op_write_mdata_file_size;
     }
 
-    ret = co_await AIOReadAwaitable(fd, &actual_file_size, sizeof(actual_file_size),
+    ret = co_await ReadAwaitable(fd, &actual_file_size, sizeof(actual_file_size),
                                     offsetof(struct xpn_metadata::data, file_size));
     if (ret > 0 && actual_file_size < head.size) {
-        ret = co_await AIOWriteAwaitable(fd, &head.size, sizeof(head.size),
+        ret = co_await WriteAwaitable(fd, &head.size, sizeof(head.size),
                                          offsetof(struct xpn_metadata::data, file_size));
-        co_await AIOFsyncAwaitable(fd);
+        co_await FsyncAwaitable(fd);
     }
 
     PROXY(close)(fd);  // TODO: think if necesary check error in close
