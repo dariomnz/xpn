@@ -92,6 +92,7 @@ int xpn_controller::run() {
         connection_socket = -1;
         debug_info("[XPN_CONTROLLER] Accepting connections in " << xpn_env::get_instance().xpn_controller_sck_port);
         ret = socket::server_accept(server_socket, connection_socket);
+        if (!running) break;
         if (ret < 0 || connection_socket < 0) {
             print_error("accept failed");
             continue;
@@ -150,6 +151,7 @@ int xpn_controller::local_mk_config() {
     debug_info("[XPN_CONTROLLER] >> Start");
     // Necesary options
     auto hostfile = m_args.get_option(option_hostfile);
+    auto hostlist = m_args.get_option(option_hostlist);
     auto conffile = xpn_env::get_instance().xpn_conf;
     // Optional options
     auto bsize = m_args.get_option(option_bsize);
@@ -157,15 +159,15 @@ int xpn_controller::local_mk_config() {
     auto server_type = m_args.get_option(option_server_type);
     auto storage_path = m_args.get_option(option_storage_path);
 
-    int ret = mk_config(hostfile, conffile, bsize, replication_level, server_type, storage_path);
+    int ret = mk_config(hostfile, hostlist, conffile, bsize, replication_level, server_type, storage_path);
 
     debug_info("[XPN_CONTROLLER] >> End");
     return ret;
 }
 
-int xpn_controller::mk_config(const std::string_view& hostfile, const char* conffile, const std::string_view& bsize,
-                              const std::string_view& replication_level, const std::string_view& server_type,
-                              const std::string_view& storage_path) {
+int xpn_controller::mk_config(const std::string_view& hostfile, const std::string_view& hostlist, const char* conffile,
+                              const std::string_view& bsize, const std::string_view& replication_level,
+                              const std::string_view& server_type, const std::string_view& storage_path) {
     int ret;
     debug_info("[XPN_CONTROLLER] >> Start");
     if (hostfile.empty()) {
@@ -330,7 +332,8 @@ int xpn_controller::start_servers(bool await, int server_cores, bool debug) {
         args.emplace_back("xpn_server");
         args.emplace_back("-s");
         std::string protocol;
-        std::tie(protocol, std::ignore, std::ignore, std::ignore) = xpn_parser::parse(conf.partitions[0].server_urls[0]);
+        std::tie(protocol, std::ignore, std::ignore, std::ignore) =
+            xpn_parser::parse(conf.partitions[0].server_urls[0]);
         uint64_t pos = protocol.find('_');
         args.emplace_back(protocol.substr(0, pos));
         args.emplace_back("-t");

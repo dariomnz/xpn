@@ -469,11 +469,11 @@ int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::dat
 {
   int ret, fd;
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_local_write_mdata] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] >> Begin");
 
   std::string srv_path = m_path + "/" + path;
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")");
 
   // is necessary to do it in xpn_server in order to ensure atomic operation
   if(only_file_size){
@@ -527,8 +527,78 @@ int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::dat
     PROXY(close)(fd); //TODO: think if necesary check error in close
   }
 
-  debug_info("[SERV_ID="<<m_server<<"] [XPN_SERVER_OPS] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
-  debug_info("[SERV_ID="<<m_server<<"] [XPN_SERVER_OPS] [nfi_local_write_mdata] << End");
+  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
+  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] << End");
+  return ret;
+}
+
+// TODO: duplicated from nfi_xpn_server because it needs to connect to the server to do the operation
+int nfi_local::nfi_flush (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_flush] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload msg;
+    
+  std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = strlen(path);
+  strcpy(msg.paths.path2(), path);
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::FLUSH, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_LOCAL] [nfi_flush] >> End");
+  return ret;
+}
+
+int nfi_local::nfi_preload (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload msg;
+  
+  size_t length = strlen(path);
+  strcpy(msg.paths.path1(), path);
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = m_path.copy(msg.paths.path2(), m_path.size());
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::PRELOAD, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_LOCAL] [nfi_preload] >> End");
+  return ret;
+}
+
+int nfi_local::nfi_response() {
+  
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_response] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_response] nfi_response()");
+
+  st_xpn_server_status req;
+    
+  ret = nfi_read_response(req);
+
+  if (ret > 0) {
+    if (req.ret < 0) {
+      errno = req.server_errno;
+      ret = req.ret;
+    }
+  }
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_response] nfi_response()="<<ret);
+  debug_info("[NFI_LOCAL] [nfi_response] >> End");
   return ret;
 }
 

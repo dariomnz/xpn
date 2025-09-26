@@ -71,6 +71,7 @@ namespace XPN
         struct file_map_md_fq_item {
             uint64_t m_count = 0;
             
+            std::mutex m_writing_mutex = {};
             std::atomic_bool m_writing = {false};
             std::mutex m_queue_mutex = {};
             uint64_t m_in_queue = 0;
@@ -106,6 +107,11 @@ namespace XPN
         void op_read_mdata   ( xpn_server_comm &comm, const st_xpn_server_path        &head, int rank_client_id, int tag_client_id );
         void op_write_mdata  ( xpn_server_comm &comm, const st_xpn_server_write_mdata &head, int rank_client_id, int tag_client_id );
         void op_write_mdata_file_size  ( xpn_server_comm &comm, const st_xpn_server_write_mdata_file_size &head, int rank_client_id, int tag_client_id );
-        st_xpn_server_status op_write_mdata_file_size_internal  ( const char* path, uint64_t new_size );
+        file_map_md_fq_item &get_mdata_queue(const char *path);
+        void release_mdata_queue(const char *path, file_map_md_fq_item &item);
+        
+        // Flush preload
+        void op_flush        ( xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id, int tag_client_id );
+        void op_preload        ( xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id, int tag_client_id );
     };    
 }

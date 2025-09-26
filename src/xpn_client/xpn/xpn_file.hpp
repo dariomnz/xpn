@@ -62,6 +62,7 @@ namespace XPN
             new_file->m_flags = file->m_flags;
             new_file->m_mode = file->m_mode;
             new_file->m_offset = file->m_offset;
+            new_file->m_mdata.m_data = file->m_mdata.m_data;
             return new_file;
         }
         // Delete default constructors

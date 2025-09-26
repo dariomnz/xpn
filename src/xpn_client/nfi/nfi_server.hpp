@@ -87,6 +87,10 @@ namespace XPN
         virtual int nfi_statvfs     (const std::string &path, struct ::statvfs &inf) = 0;
         virtual int nfi_read_mdata  (const std::string &path, xpn_metadata &mdata) = 0;
         virtual int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
+
+        virtual int nfi_flush       (const char *path) = 0;
+        virtual int nfi_preload     (const char *path) = 0;
+        virtual int nfi_response    () = 0;
     protected:
     
         template<typename msg_struct>
@@ -174,6 +178,26 @@ namespace XPN
                 m_comm = nullptr;
             }
             debug_info("[NFI_XPN] [nfi_server_do_request] >> End");
+
+            return 0;
+        }
+
+        
+        template<typename req_struct>
+        int nfi_read_response ( req_struct &req )
+        {
+            ssize_t ret;
+            debug_info("[NFI_XPN] [nfi_read_response] >> Begin");
+
+            // read response...
+            debug_info("[NFI_XPN] [nfi_read_response] Read response");
+
+            ret = m_comm->read_data((void *)&(req), sizeof(req));
+            if (ret < 0) {
+                return -1;
+            }
+
+            debug_info("[NFI_XPN] [nfi_read_response] >> End");
 
             return 0;
         }

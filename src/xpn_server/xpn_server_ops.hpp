@@ -66,6 +66,10 @@ enum class xpn_server_ops {
     DISCONNECT,
     END,
 
+    // Flush preload
+    FLUSH,
+    PRELOAD,
+
     // For enum count
     size,
 };
@@ -103,6 +107,10 @@ static const std::array<std::string, static_cast<uint64_t>(xpn_server_ops::size)
     "FINALIZE",
     "DISCONNECT",
     "END",
+
+    // Flush preload
+    "FLUSH",
+    "PRELOAD",
 
     // For enum count
     "size",
@@ -392,6 +400,12 @@ struct st_xpn_server_statvfs_req {
     uint64_t get_size() { return sizeof(*this); }
 };
 
+struct st_xpn_server_flush_preload {
+    xpn_server_double_path paths;
+
+    size_t get_size() { return paths.get_size(); }
+};
+
 constexpr uint64_t get_xpn_server_max_msg_size() {
     uint64_t size = 0;
     if (size < sizeof(st_xpn_server_status)) size = sizeof(st_xpn_server_status);
@@ -410,6 +424,7 @@ constexpr uint64_t get_xpn_server_max_msg_size() {
     if (size < sizeof(st_xpn_server_write_mdata)) size = sizeof(st_xpn_server_write_mdata);
     if (size < sizeof(st_xpn_server_write_mdata_file_size)) size = sizeof(st_xpn_server_write_mdata_file_size);
     if (size < sizeof(st_xpn_server_statvfs_req)) size = sizeof(st_xpn_server_statvfs_req);
+    if (size < sizeof(st_xpn_server_flush_preload)) size = sizeof(st_xpn_server_flush_preload);
     return size;
 }
 

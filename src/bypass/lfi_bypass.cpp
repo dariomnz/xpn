@@ -345,6 +345,80 @@ extern "C" ssize_t lfi_cancel(lfi_request *request) {
     return ret;
 }
 
+typedef struct lfi_group lfi_group;
+
+extern "C" int lfi_group_create(const char *hostnames[], size_t n_hosts, lfi_group *out_group) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_group_create(%p, %ld, %p)", hostnames, n_hosts, out_group);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(group_create)(hostnames, n_hosts, out_group);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_group_create(%p, %ld, %p) -> %d", hostnames, n_hosts, out_group, ret);
+    return ret;
+}
+
+extern "C" int lfi_group_rank(lfi_group *group, int *rank) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_group_rank(%p, %d)", group, *rank);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(group_rank)(group, rank);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_group_rank(%p, %d) -> %d", group, *rank, ret);
+    return ret;
+}
+
+extern "C" int lfi_group_size(lfi_group *group, int *size) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_group_size(%p, %d)", group, *size);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(group_size)(group, size);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_group_size(%p, %d) -> %d", group, *size, ret);
+    return ret;
+}
+
+extern "C" int lfi_group_close(lfi_group *group) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_group_close(%p)", group);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(group_close)(group);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_group_close(%p) -> %d", group, ret);
+    return ret;
+}
+
+extern "C" int lfi_barrier(lfi_group *group) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_barrier(%p)", group);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(barrier)(group);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_barrier(%p) -> %d", group, ret);
+    return ret;
+}
+
+extern "C" int lfi_broadcast(lfi_group *group, int root, void *data, size_t size) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_cancel(%p, %d, %p, %ld)", group, root, data, size);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(broadcast)(group, root, data, size);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_cancel(%p, %d, %p, %ld) -> %d", group, root, data, size, ret);
+    return ret;
+}
+
 static void lfi_event_hook([[maybe_unused]] DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t *data) {}
 
 DmtcpPluginDescriptor_t lfi_plugin = {DMTCP_PLUGIN_API_VERSION, PACKAGE_VERSION, "lfi",         "lfi",

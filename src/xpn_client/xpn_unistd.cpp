@@ -90,6 +90,36 @@ int xpn_clean_connections ( void )
   return ret;
 }
 
+int xpn_flush ( const char * path )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_flush] >> Begin");
+
+  XPN_API_LOCK();
+  ret = XPN::xpn_api::get_instance().flush_preload(path, true);
+  XPN_API_UNLOCK();
+
+  debug_info("[XPN_UNISTD] [xpn_flush] >> End");
+
+  return ret;
+}
+
+int xpn_preload ( const char * path )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_preload] >> Begin");
+
+  XPN_API_LOCK();
+  ret = XPN::xpn_api::get_instance().flush_preload(path, false);
+  XPN_API_UNLOCK();
+
+  debug_info("[XPN_UNISTD] [xpn_preload] >> End");
+
+  return ret;
+}
+
 int xpn_mark_error_server ( int index )
 {
   int ret = -1;

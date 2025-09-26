@@ -59,6 +59,10 @@
   int         xpn_destroy ( void );
   void        xpn_print_partitions ( void );
   void        xpn_clean_connections ( void );
+
+  int         xpn_flush( const char * path );
+  int         xpn_preload( const char * path );
+
   // to test fault tolerant
   int         xpn_mark_error_server(int index);
 

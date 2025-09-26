@@ -109,69 +109,6 @@ int xpn_controller::send_stop(int socket) {
     return ret;
 }
 
-int xpn_controller::send_mk_config(int socket) {
-    debug_info("[XPN_CONTROLLER] >> Start");
-    // Necesary options
-    auto hostfile = m_args.get_option(option_hostfile);
-    if (hostfile.empty()) {
-        std::cerr << "To mk_config is necesary the option hostfile" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-    auto conffile = xpn_env::get_instance().xpn_conf;
-    if (conffile == nullptr) {
-        std::cerr << "To mk_config is necesary to set the XPN_CONF to a shared file path" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    auto bsize = m_args.get_option(option_bsize);
-    auto replication_level = m_args.get_option(option_replication_level);
-    auto server_type = m_args.get_option(option_server_type);
-    auto storage_path = m_args.get_option(option_storage_path);
-    int64_t ret;
-    // Send the required strings
-    ret = socket::send_str(socket, hostfile);
-    if (ret < 0) {
-        print_error("send_str hostfile");
-        return ret;
-    }
-    ret = socket::send_str(socket, std::string_view(conffile));
-    if (ret < 0) {
-        print_error("send_str conffile");
-        return ret;
-    }
-    // Send the optionals strings
-    ret = socket::send_str(socket, bsize);
-    if (ret < 0) {
-        print_error("send_str bsize");
-        return ret;
-    }
-    ret = socket::send_str(socket, replication_level);
-    if (ret < 0) {
-        print_error("send_str replication_level");
-        return ret;
-    }
-    ret = socket::send_str(socket, server_type);
-    if (ret < 0) {
-        print_error("send_str server_type");
-        return ret;
-    }
-    ret = socket::send_str(socket, storage_path);
-    if (ret < 0) {
-        print_error("send_str storage_path");
-        return ret;
-    }
-
-    // Recv result
-    int res;
-    ret = socket::recv(socket, &res, sizeof(res));
-    if (ret != sizeof(ret)) {
-        print_error("recv result");
-        return ret;
-    }
-    debug_info("[XPN_CONTROLLER] >> End");
-    return res;
-}
-
 int xpn_controller::send_start_servers(int socket) {
     int ret;
     debug_info("[XPN_CONTROLLER] >> Start");
@@ -220,7 +157,7 @@ int xpn_controller::send_ping_servers([[maybe_unused]] int socket) {
 int xpn_controller::send_expand(int socket) {
     debug_info("[XPN_CONTROLLER] >> Start");
     // Necesary options
-    auto host_list = m_args.get_option(option_host_list);
+    auto host_list = m_args.get_option(option_hostlist);
     if (host_list.empty()) {
         std::cerr << "To expand_new and expand_change is necesary the option host_list" << std::endl;
         exit(EXIT_FAILURE);
@@ -239,7 +176,7 @@ int xpn_controller::send_expand(int socket) {
 int xpn_controller::send_shrink(int socket) {
     debug_info("[XPN_CONTROLLER] >> Start");
     // Necesary options
-    auto host_list = m_args.get_option(option_host_list);
+    auto host_list = m_args.get_option(option_hostlist);
     if (host_list.empty()) {
         std::cerr << "To shrink_new and shrink_change is necesary the option host_list" << std::endl;
         exit(EXIT_FAILURE);

@@ -107,6 +107,9 @@ namespace XPN
         int destroy();
         int print_partitions();
         int clean_connections();
+
+        int flush_preload(const char * path, bool isFlush);
+
         int mark_error_server(int index);
         int get_block_locality(char *path, int64_t offset, int *url_c, char **url_v[]);
         int free_block_locality(int *url_c, char **url_v[]);

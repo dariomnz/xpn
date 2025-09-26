@@ -206,4 +206,39 @@ int xpn_api::free_block_locality(int *url_c, char **url_v[]) {
     XPN_DEBUG_END;
     return res;
 }
+
+int xpn_api::flush_preload(const char * path, bool isFlush) {
+    XPN_DEBUG_BEGIN_CUSTOM(path);
+    int res = 0;
+    // TODO: support more than one partition
+    auto& part = m_partitions.begin()->second;
+    int serv_done = 0;
+    for (auto &&serv : part.m_data_serv) {
+        if (isFlush){
+            res = serv->nfi_flush(path);
+        } else {
+            res = serv->nfi_preload(path);
+        }
+        if (res < 0) {
+            break;
+        }
+        serv_done++;
+    }
+    
+    int error = 0;
+    for (int i = 0; i < serv_done; i++) {
+        res = part.m_data_serv[i]->nfi_response();
+        if (res < 0) {
+            error = res;
+            continue;
+        }
+    }
+    
+    if (error) {
+        res = error;
+    }
+    
+    XPN_DEBUG_END_CUSTOM(path);
+    return res;
+}
 }  // namespace XPN

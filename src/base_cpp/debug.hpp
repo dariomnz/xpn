@@ -58,44 +58,75 @@ struct format_open_mode {
     friend std::ostream &operator<<(std::ostream &os, const format_open_mode &open_mode);
 };
 
-#define XPN_DEBUG_COMMON_HEADER                                                                                  \
-    std::cerr << "[" << get_time_stamp() << "] [" << __func__ << "] [" << file_name(__FILE__) << ":" << __LINE__ \
-              << "] ";
+struct print_errno {
+    ssize_t res;
+    print_errno(ssize_t res) : res(res) {}
+    friend std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const print_errno &pe) {
+        if (pe.res < 0) {
+            os << " errno=" << errno << " " << std::strerror(errno);
+        }
+        return os;
+    }
+};
+
+#define XPN_DEBUG_COMMON_HEADER                                                                                \
+    {                                                                                                          \
+        std::ostringstream out;                                                                                \
+        out << "[" << get_time_stamp() << "] [" << __func__ << "] [" << file_name(__FILE__) << ":" << __LINE__ \
+            << "] ";                                                                                           \
+        fprintf(stderr, out.str().c_str());                                                                    \
+    }
 
 #ifdef DEBUG
-#define XPN_DEBUG(out_format)                 \
-        XPN_DEBUG_COMMON_HEADER               \
-        std::cerr << out_format << std::endl;
+#define XPN_DEBUG(out_format)               \
+    {                                       \
+        XPN_DEBUG_COMMON_HEADER             \
+        std::ostringstream out;             \
+        out << out_format << std::endl;     \
+        fprintf(stderr, out.str().c_str()); \
+    }
 #else
-#define XPN_DEBUG(out_format)                 \
-    if (xpn_env::get_instance().xpn_debug) {  \
-        XPN_DEBUG_COMMON_HEADER               \
-        std::cerr << out_format << std::endl; \
+#define XPN_DEBUG(out_format)                \
+    if (xpn_env::get_instance().xpn_debug) { \
+        XPN_DEBUG_COMMON_HEADER              \
+        std::ostringstream out;              \
+        out << out_format << std::endl;      \
+        fprintf(stderr, out.str().c_str());  \
     }
 #endif
 
 #define XPN_DEBUG_BEGIN_CUSTOM(out_format)                       \
     XPN_DEBUG("Begin " << __func__ << "(" << out_format << ")"); \
     XPN_PROFILE_FUNCTION();
-#define XPN_DEBUG_END_CUSTOM(out_format)                                                             \
-    XPN_DEBUG("End   " << __func__ << "(" << out_format << ")=" << res << ", errno=" << errno << " " \
-                       << std::strerror(errno) << "");
+#define XPN_DEBUG_END_CUSTOM(out_format) \
+    XPN_DEBUG("End   " << __func__ << "(" << out_format << ")=" << res << print_errno(res));
 #define XPN_DEBUG_BEGIN                      \
     XPN_DEBUG("Begin " << __func__ << "()"); \
     XPN_PROFILE_FUNCTION();
-#define XPN_DEBUG_END \
-    XPN_DEBUG("End   " << __func__ << "()=" << res << ", errno=" << errno << " " << std::strerror(errno) << "");
+#define XPN_DEBUG_END XPN_DEBUG("End   " << __func__ << "()=" << res << print_errno(res));
 
 #ifdef DEBUG
-#define debug_error(out_format)                                                                            \
-    std::cerr << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
-              << out_format << std::endl;
-#define debug_warning(out_format)                                                                            \
-    std::cerr << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
-              << out_format << std::endl;
-#define debug_info(out_format)                                                                            \
-    std::cerr << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
-              << out_format << std::endl;
+#define debug_error(out_format)                                                                                        \
+    {                                                                                                                  \
+        std::ostringstream out;                                                                                        \
+        out << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
+            << std::endl;                                                                                              \
+        fprintf(stderr, out.str().c_str());                                                                            \
+    }
+#define debug_warning(out_format)                                                                          \
+    {                                                                                                      \
+        std::ostringstream out;                                                                            \
+        out << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
+            << out_format << std::endl;                                                                    \
+        fprintf(stderr, out.str().c_str());                                                                \
+    }
+#define debug_info(out_format)                                                                                        \
+    {                                                                                                                 \
+        std::ostringstream out;                                                                                       \
+        out << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
+            << std::endl;                                                                                             \
+        fprintf(stderr, out.str().c_str());                                                                           \
+    }
 #else
 #define debug_error(out_format)
 #define debug_warning(out_format)
@@ -107,5 +138,8 @@ struct format_open_mode {
 #define print_error(out_format)                                                                                        \
     std::cerr << std::dec << "[ERROR] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] [" << __func__ << "] " \
               << out_format << " : " << std::strerror(errno) << std::endl;
-#define unreachable(msg) print_error(msg); std::abort();
+
+#define unreachable(msg) \
+    print_error(msg);    \
+    std::abort();
 }  // namespace XPN

@@ -186,7 +186,7 @@ inline const char *skip_xpn_prefix(const char *path) {
 /**
  * File descriptors table management
  */
-static std::mutex fdstable_mutex;
+static std::recursive_mutex fdstable_mutex;
 static std::unordered_set<int> fdstable;
 
 bool fdstable_get(int fd) {
@@ -234,7 +234,7 @@ bool fdstable_remove(int fd) {
 /**
  * Dir table management
  */
-static std::mutex fdsdirtable_mutex;
+static std::recursive_mutex fdsdirtable_mutex;
 static std::unordered_set<DIR *> fdsdirtable;
 
 bool fdsdirtable_get(DIR *dir) {
@@ -300,6 +300,15 @@ int stat64_to_stat(struct stat *buf, struct stat64 *st) {
     return 0;
 }
 
+struct scope_disable_ckpt {
+    scope_disable_ckpt() {
+        DMTCP_PLUGIN_DISABLE_CKPT();
+    }
+    ~scope_disable_ckpt() {
+        DMTCP_PLUGIN_ENABLE_CKPT();
+    }
+};
+
 /* ... Functions / Funciones ......................................... */
 
 // File API
@@ -313,7 +322,7 @@ extern "C" int open(const char *path, int flags, ...) {
     debug_info("[BYPASS] >> Begin open(%s, %d, %d)", path, flags, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         if (mode != 0) {
             fd = xpn_open(skip_xpn_prefix(path), flags, mode);
@@ -321,7 +330,6 @@ extern "C" int open(const char *path, int flags, ...) {
             fd = xpn_open(skip_xpn_prefix(path), flags);
         }
         ret = fdstable_put(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_open(%s, %d, %d) -> %d", skip_xpn_prefix(path), flags, mode, ret);
     } else {
         ret = NEXT_FNC(open)((char *)path, flags, mode);
@@ -340,7 +348,7 @@ extern "C" int open64(const char *path, int flags, ...) {
     debug_info("[BYPASS] >> Begin open64(%s, %d, %d)", path, flags, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         if (mode != 0) {
             fd = xpn_open(skip_xpn_prefix(path), flags, mode);
@@ -348,7 +356,6 @@ extern "C" int open64(const char *path, int flags, ...) {
             fd = xpn_open(skip_xpn_prefix(path), flags);
         }
         ret = fdstable_put(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_open(%s, %d, %d) -> %d", skip_xpn_prefix(path), flags, mode, ret);
     } else {
         ret = NEXT_FNC(open64)((char *)path, flags, mode);
@@ -369,7 +376,7 @@ extern "C" int __open_2(const char *path, int flags, ...) {
     debug_info("[BYPASS] >> Begin __open_2(%s, %d, %d)", path, flags, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         if (mode != 0) {
             fd = xpn_open(skip_xpn_prefix(path), flags, mode);
@@ -377,7 +384,6 @@ extern "C" int __open_2(const char *path, int flags, ...) {
             fd = xpn_open(skip_xpn_prefix(path), flags);
         }
         ret = fdstable_put(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_open(%s, %d, %d) -> %d", skip_xpn_prefix(path), flags, mode, ret);
     } else {
         ret = NEXT_FNC(__open_2)((char *)path, flags);
@@ -393,11 +399,10 @@ extern "C" int creat(const char *path, mode_t mode) {
     debug_info("[BYPASS] >> Begin creat(%s, %d)", path, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         fd = xpn_creat((const char *)skip_xpn_prefix(path), mode);
         ret = fdstable_put(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_creat(%s, %d) -> %d", skip_xpn_prefix(path), mode, ret);
     } else {
         ret = NEXT_FNC(creat)(path, mode);
@@ -412,7 +417,7 @@ extern "C" int mkstemp(char *templ) {
     debug_info("[BYPASS] >> Begin mkstemp(%s)", templ);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(templ)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         srand(time(NULL));
         int n = rand() % 100000;
@@ -420,7 +425,6 @@ extern "C" int mkstemp(char *templ) {
         sprintf(str_init, "%06d", n);
         int fd = xpn_creat((const char *)skip_xpn_prefix(templ), S_IRUSR | S_IWUSR);
         ret = fdstable_put(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_creat(%s, %d) -> %d", skip_xpn_prefix(templ), S_IRUSR | S_IWUSR, ret);
     } else {
         ret = NEXT_FNC(mkstemp)(templ);
@@ -434,10 +438,9 @@ extern "C" int ftruncate(int fd, off_t length) {
     debug_info("[BYPASS] >> Begin ftruncate(%d, %ld)", fd, length);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_ftruncate(fd, length);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_ftruncate(%d, %ld) -> %d", fd, length, ret);
     } else {
         ret = NEXT_FNC(ftruncate)(fd, length);
@@ -451,10 +454,9 @@ extern "C" ssize_t read(int fd, void *buf, size_t nbyte) {
     debug_info("[BYPASS] >> Begin read(%d, %p, %ld)", fd, buf, nbyte);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_read(fd, buf, nbyte);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_read(%d, %p, %ld) -> %ld", fd, buf, nbyte, ret);
     } else {
         ret = NEXT_FNC(read)(fd, buf, nbyte);
@@ -468,10 +470,9 @@ extern "C" ssize_t write(int fd, const void *buf, size_t nbyte) {
     debug_info("[BYPASS] >> Begin write(%d, %p, %ld)", fd, buf, nbyte);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_write(fd, (void *)buf, nbyte);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_write(%d, %p, %ld) -> %ld", fd, buf, nbyte, ret);
     } else {
         ret = NEXT_FNC(write)(fd, (void *)buf, nbyte);
@@ -485,10 +486,9 @@ extern "C" ssize_t pread(int fd, void *buf, size_t count, off_t offset) {
     debug_info("[BYPASS] >> Begin pread(%d, %p, %ld, %ld)", fd, buf, count, offset);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_pread(fd, buf, count, offset);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_read(%d, %p, %ld, %ld) -> %ld", fd, buf, count, offset, ret);
     } else {
         ret = NEXT_FNC(pread)(fd, buf, count, offset);
@@ -502,10 +502,9 @@ extern "C" ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset) {
     debug_info("[BYPASS] >> Begin pwrite(%d, %p, %ld, %ld)", fd, buf, count, offset);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_pwrite(fd, buf, count, offset);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_pwrite(%d, %p, %ld, %ld) -> %ld", fd, buf, count, offset, ret);
     } else {
         ret = NEXT_FNC(pwrite)(fd, buf, count, offset);
@@ -519,10 +518,9 @@ extern "C" ssize_t pread64(int fd, void *buf, size_t count, off_t offset) {
     debug_info("[BYPASS] >> Begin pread64(%d, %p, %ld, %ld)", fd, buf, count, offset);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_pread(fd, buf, count, offset);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_pread(%d, %p, %ld, %ld) -> %ld", fd, buf, count, offset, ret);
     } else {
         ret = NEXT_FNC(pread64)(fd, buf, count, offset);
@@ -536,10 +534,9 @@ extern "C" ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset)
     debug_info("[BYPASS] >> Begin pwrite64(%d, %p, %ld, %ld)", fd, buf, count, offset);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_pwrite(fd, buf, count, offset);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_pwrite(%d, %p, %ld, %ld) -> %ld", fd, buf, count, offset, ret);
     } else {
         ret = NEXT_FNC(pwrite64)(fd, buf, count, offset);
@@ -553,10 +550,9 @@ extern "C" off_t lseek(int fd, off_t offset, int whence) {
     debug_info("[BYPASS] >> Begin lseek(%d, %ld, %d)", fd, offset, whence);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_lseek(fd, offset, whence);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d, %ld, %d) -> %ld", fd, offset, whence, ret);
     } else {
         ret = NEXT_FNC(lseek)(fd, offset, whence);
@@ -570,10 +566,9 @@ extern "C" off64_t lseek64(int fd, off64_t offset, int whence) {
     debug_info("[BYPASS] >> Begin lseek64(%d, %ld, %d)", fd, offset, whence);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_lseek(fd, offset, whence);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d, %ld, %d) -> %ld", fd, offset, whence, ret);
     } else {
         ret = NEXT_FNC(lseek64)(fd, offset, whence);
@@ -587,10 +582,9 @@ extern "C" int stat(const char *path, struct stat *buf) {
     debug_info("[BYPASS] >> Begin stat(%s, %p)", path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__xstat)(_STAT_VER, (const char *)path, buf);
@@ -605,13 +599,12 @@ extern "C" int __lxstat64(int ver, const char *path, struct stat64 *buf) {
     debug_info("[BYPASS] >> Begin __lxstat64(%d, %s, %p)", ver, path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), &st);
         if (ret >= 0) {
             stat_to_stat64(buf, &st);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__lxstat64)(ver, (const char *)path, buf);
@@ -626,13 +619,12 @@ extern "C" int __xstat64(int ver, const char *path, struct stat64 *buf) {
     debug_info("[BYPASS] >> Begin __xstat64(%d, %s, %p)", ver, path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), &st);
         if (ret >= 0) {
             stat_to_stat64(buf, &st);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__xstat64)(ver, (const char *)path, buf);
@@ -647,13 +639,12 @@ extern "C" int __fxstat64(int ver, int fd, struct stat64 *buf) {
     debug_info("[BYPASS] >> Begin __fxstat64(%d, %d, %p)", ver, fd, buf);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fstat(fd, &st);
         if (ret >= 0) {
             stat_to_stat64(buf, &st);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_fstat(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = NEXT_FNC(__fxstat64)(ver, fd, buf);
@@ -667,10 +658,9 @@ extern "C" int __lxstat(int ver, const char *path, struct stat *buf) {
     debug_info("[BYPASS] >> Begin __lxstat(%d, %s, %p)", ver, path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__lxstat)(ver, (const char *)path, buf);
@@ -684,10 +674,9 @@ extern "C" int __xstat(int ver, const char *path, struct stat *buf) {
     debug_info("[BYPASS] >> Begin __xstat(%d, %s, %p)", ver, path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__xstat)(ver, (const char *)path, buf);
@@ -700,10 +689,9 @@ extern "C" int fstat(int fd, struct stat *buf) {
     int ret = -1;
     debug_info("[BYPASS] >> Begin fstat(%d, %p)", fd, buf);
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fstat(fd, buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_fstat(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = NEXT_FNC(__fxstat)(_STAT_VER, fd, buf);
@@ -716,10 +704,9 @@ extern "C" int __fxstat(int ver, int fd, struct stat *buf) {
     int ret = -1;
     debug_info("[BYPASS] >> Begin __fxstat(%d, %d, %p)", ver, fd, buf);
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fstat(fd, buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_fstat(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = NEXT_FNC(__fxstat)(ver, fd, buf);
@@ -734,13 +721,12 @@ extern "C" int __fxstatat64(int ver, int dirfd, const char *path, struct stat64 
     debug_info("[BYPASS] >> Begin __fxstatat64(%d, %d, %s, %p, %d)", ver, dirfd, path, buf, flags);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), &st);
         if (ret >= 0) {
             stat_to_stat64(buf, &st);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__fxstatat64)(ver, dirfd, path, buf, flags);
@@ -754,10 +740,9 @@ extern "C" int __fxstatat(int ver, int dirfd, const char *path, struct stat *buf
     debug_info("[BYPASS] >> Begin __fxstatat(%d, %d, %s, %p, %d)", ver, dirfd, path, buf, flags);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_stat(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(__fxstatat)(ver, dirfd, path, buf, flags);
@@ -771,11 +756,10 @@ extern "C" int close(int fd) {
     debug_info("[BYPASS] >> Begin close(%d)", fd);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_close(fd);
         fdstable_remove(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_close(%d) -> %d", fd, ret);
     } else {
         ret = NEXT_FNC(close)(fd);
@@ -789,10 +773,9 @@ extern "C" int rename(const char *old_path, const char *new_path) {
     debug_info("[BYPASS] >> Begin rename(%s, %s)", old_path, new_path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(old_path) && is_xpn_prefix(new_path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_rename(skip_xpn_prefix(old_path), skip_xpn_prefix(new_path));
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_rename(%s, %s) -> %d", old_path, new_path, ret);
     } else {
         ret = NEXT_FNC(rename)(old_path, new_path);
@@ -806,10 +789,9 @@ extern "C" int unlink(const char *path) {
     debug_info("[BYPASS] >> Begin unlink(%s)", path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_unlink(skip_xpn_prefix(path));
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_unlink(%s) -> %d", skip_xpn_prefix(path), ret);
     } else {
         ret = NEXT_FNC(unlink)((char *)path);
@@ -823,8 +805,8 @@ extern "C" int remove(const char *path) {
     debug_info("[BYPASS] >> Begin remove(%s)", path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
+        scope_disable_ckpt scope_ckpt;
         struct stat buf;
-        DMTCP_PLUGIN_DISABLE_CKPT();
         check_xpn_init();
         ret = xpn_stat(skip_xpn_prefix(path), &buf);
         if ((buf.st_mode & S_IFMT) == S_IFREG) {
@@ -834,7 +816,6 @@ extern "C" int remove(const char *path) {
             ret = xpn_rmdir(skip_xpn_prefix(path));
             debug_info("[BYPASS] << xpn_rmdir(%s) -> %d", skip_xpn_prefix(path), ret);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
     } else {
         ret = NEXT_FNC(remove)((char *)path);
         debug_info("[BYPASS] << remove(%s) -> %d", path, ret);
@@ -848,7 +829,7 @@ extern "C" FILE *fopen(const char *path, const char *mode) {
     debug_info("[BYPASS] >> Begin fopen(%s, %s)", path, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         int fd;
         switch (mode[0]) {
@@ -866,7 +847,6 @@ extern "C" FILE *fopen(const char *path, const char *mode) {
         debug_info("[BYPASS] xpn_open(%s) -> %d", skip_xpn_prefix(path), fd);
         ret = fdopen(xpn_fd, mode);
         debug_info("[BYPASS] << fdopen %d -> %p", xpn_fd, ret);
-        DMTCP_PLUGIN_ENABLE_CKPT();
     } else {
         ret = NEXT_FNC(fopen)((const char *)path, mode);
         debug_info("[BYPASS] << NEXT_FNC(fopen) (%s, %s) -> %p", path, mode, ret);
@@ -879,11 +859,10 @@ extern "C" FILE *fdopen(int fd, const char *mode) {
     debug_info("[BYPASS] >> Begin fdopen(%d, %s)", fd, mode);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         fp = NEXT_FNC(fopen)("/dev/null", mode);
         fp->_fileno = fd;
-        DMTCP_PLUGIN_ENABLE_CKPT();
     } else {
         fp = NEXT_FNC(fdopen)(fd, mode);
     }
@@ -897,11 +876,10 @@ extern "C" int fclose(FILE *stream) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_close(fd);
         fdstable_remove(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_close(%d) -> %d", fd, ret);
     } else {
         ret = NEXT_FNC(fclose)(stream);
@@ -916,12 +894,11 @@ extern "C" size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         size_t buf_size = size * nmemb;
         ret = xpn_read(fd, ptr, buf_size);
         ret = ret / size;  // Number of items read
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_read(%d, %p, %ld) -> %ld", fd, ptr, buf_size, ret);
     } else {
         ret = NEXT_FNC(fread)(ptr, size, nmemb, stream);
@@ -936,12 +913,11 @@ extern "C" size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *strea
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         size_t buf_size = size * nmemb;
         ret = xpn_write(fd, ptr, buf_size);
         ret = ret / size;  // Number of items Written
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_write(%d, %p, %ld) -> %ld", fd, ptr, buf_size, ret);
     } else {
         ret = NEXT_FNC(fwrite)(ptr, size, nmemb, stream);
@@ -956,10 +932,9 @@ extern "C" int fseek(FILE *stream, long int offset, int whence) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_lseek(fd, offset, whence);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d, %ld, %d) -> %d", fd, offset, whence, ret);
     } else {
         ret = NEXT_FNC(fseek)(stream, offset, whence);
@@ -974,10 +949,9 @@ extern "C" long ftell(FILE *stream) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_lseek(fd, 0, SEEK_CUR);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d, %d, %d) -> %ld", fd, 0, SEEK_CUR, ret);
     } else {
         ret = NEXT_FNC(ftell)(stream);
@@ -991,10 +965,9 @@ extern "C" void rewind(FILE *stream) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         xpn_lseek(fd, 0, SEEK_SET);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d, %d, %d)", fd, 0, SEEK_SET);
     } else {
         NEXT_FNC(rewind)(stream);
@@ -1008,19 +981,17 @@ extern "C" int feof(FILE *stream) {
     int fd = fileno(stream);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         int ret1, ret2;
         ret1 = xpn_lseek(fd, 0, SEEK_CUR);
         if (ret1 == -1) {
             debug_info("[BYPASS] << xpn_lseek(%d, %d, %d) -> %d", fd, 0, SEEK_CUR, ret);
-            DMTCP_PLUGIN_ENABLE_CKPT();
             return ret1;
         }
         ret2 = xpn_lseek(fd, 0, SEEK_END);
         if (ret2 != -1) {
             debug_info("[BYPASS] << xpn_lseek(%d, %d, %d) -> %d", fd, 0, SEEK_END, ret);
-            DMTCP_PLUGIN_ENABLE_CKPT();
             return ret2;
         }
         if (ret1 != ret2) {
@@ -1028,7 +999,6 @@ extern "C" int feof(FILE *stream) {
         } else {
             ret = 1;
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_lseek(%d) -> %d", fd, ret);
     } else {
         ret = NEXT_FNC(feof)(stream);
@@ -1044,10 +1014,9 @@ extern "C" int mkdir(const char *path, mode_t mode) {
     debug_info("[BYPASS] >> Begin mkdir(%s, %d)", path, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_mkdir(skip_xpn_prefix(path), mode);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_mkdir(%s, %d) -> %d", skip_xpn_prefix(path), mode, ret);
     } else {
         ret = NEXT_FNC(mkdir)((char *)path, mode);
@@ -1061,13 +1030,12 @@ extern "C" DIR *opendir(const char *dirname) {
     debug_info("[BYPASS] >> Begin opendir(%p)", dirname);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(dirname)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_opendir(skip_xpn_prefix(dirname));
         if (ret != NULL) {
             fdsdirtable_put(ret);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_opendir(%s) -> %p", skip_xpn_prefix(dirname), ret);
     } else {
         ret = NEXT_FNC(opendir)((char *)dirname);
@@ -1080,10 +1048,9 @@ extern "C" struct dirent *readdir(DIR *dirp) {
     struct dirent *ret;
     debug_info("[BYPASS] >> Begin readdir(%p)", dirp);
     if (fdsdirtable_get(dirp)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_readdir(dirp);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_readdir(%p) -> %p", dirp, ret);
     } else {
         ret = NEXT_FNC(readdir)(dirp);
@@ -1097,7 +1064,7 @@ extern "C" struct dirent64 *readdir64(DIR *dirp) {
     struct dirent64 *ret = NULL;
     debug_info("[BYPASS] >> Begin readdir64(%p)", dirp);
     if (fdsdirtable_get(dirp)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         aux = xpn_readdir(dirp);
         if (aux != NULL) {
@@ -1109,7 +1076,6 @@ extern "C" struct dirent64 *readdir64(DIR *dirp) {
             ret->d_type = aux->d_type;
             strcpy(ret->d_name, aux->d_name);
         }
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_readdir(%p) -> %p", dirp, ret);
     } else {
         ret = NEXT_FNC(readdir64)(dirp);
@@ -1122,11 +1088,10 @@ extern "C" int closedir(DIR *dirp) {
     int ret = -1;
     debug_info("[BYPASS] >> Begin closedir(%p)", dirp);
     if (fdsdirtable_get(dirp)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         fdsdirtable_remove(dirp);
         ret = xpn_closedir(dirp);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_closedir(%p) -> %d", dirp, ret);
     } else {
         ret = NEXT_FNC(closedir)(dirp);
@@ -1140,10 +1105,9 @@ extern "C" int rmdir(const char *path) {
     debug_info("[BYPASS] >> Begin rmdir(%s)", path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_rmdir(skip_xpn_prefix(path));
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_closedir(%s) -> %d", skip_xpn_prefix(path), ret);
     } else {
         ret = NEXT_FNC(rmdir)((char *)path);
@@ -1191,10 +1155,9 @@ extern "C" int dup(int fd) {
     debug_info("[BYPASS] >> Begin dup(%d)", fd);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_dup(fd);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_dup(%d) -> %d", fd, ret);
     } else {
         ret = NEXT_FNC(dup)(fd);
@@ -1208,12 +1171,11 @@ extern "C" int dup2(int fd, int fd2) {
     debug_info("[BYPASS] >> Begin dup2(%d, %d)", fd, fd2);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_dup2(fd, fd2);
         // TODO: fix to insert in table
         fdstable_put(fd2);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_dup2(%d, %d) -> %d", fd, fd2, ret);
     } else {
         ret = NEXT_FNC(dup2)(fd, fd2);
@@ -1247,10 +1209,9 @@ extern "C" int chdir(const char *path) {
     debug_info("[BYPASS] >> Begin chdir(%s)", path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_chdir((char *)skip_xpn_prefix(path));
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_chdir(%s) -> %d", skip_xpn_prefix(path), ret);
     } else {
         ret = NEXT_FNC(chdir)((char *)path);
@@ -1264,10 +1225,9 @@ extern "C" int chmod(const char *path, mode_t mode) {
     debug_info("[BYPASS] >> Begin chmod(%s, %d)", path, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_chmod(skip_xpn_prefix(path), mode);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_chmod(%s, %d) -> %d", skip_xpn_prefix(path), mode, ret);
     } else {
         ret = NEXT_FNC(chmod)((char *)path, mode);
@@ -1281,10 +1241,9 @@ extern "C" int fchmod(int fd, mode_t mode) {
     debug_info("[BYPASS] >> Begin chmod(%d, %d)", fd, mode);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fchmod(fd, mode);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_chmod(%d, %d) -> %d", fd, mode, ret);
     } else {
         ret = NEXT_FNC(fchmod)(fd, mode);
@@ -1298,10 +1257,9 @@ extern "C" int chown(const char *path, uid_t owner, gid_t group) {
     debug_info("[BYPASS] >> Begin chown(%s, %d, %d)", path, owner, group);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_chown(skip_xpn_prefix(path), owner, group);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_chown(%s, %d, %d) -> %d", skip_xpn_prefix(path), owner, group, ret);
     } else {
         ret = NEXT_FNC(chown)((char *)path, owner, group);
@@ -1316,6 +1274,7 @@ extern "C" int fcntl(int fd, int cmd, long arg)  // TODO
     debug_info("[BYPASS] >> Begin fcntl(%d, %d, %ld)", fd, cmd, arg);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
+        scope_disable_ckpt scope_ckpt;
         // TODO
         ret = 0;
         debug_info("[BYPASS] << todo xpn_fcntl(%d, %d, %ld) -> %d", fd, cmd, arg, ret);
@@ -1328,11 +1287,12 @@ extern "C" int fcntl(int fd, int cmd, long arg)  // TODO
 
 extern "C" int access(const char *path, int mode) {
     int ret = -1;
-    struct stat64 stats;
+    struct stat stats;
     debug_info("[BYPASS] >> Begin access(%s, %d)", path, mode);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        if (__lxstat64(_STAT_VER, path, &stats)) {
+        scope_disable_ckpt scope_ckpt;
+        if (xpn_stat(skip_xpn_prefix(path), &stats) != 0) {
             debug_info("[BYPASS] << stat access(%s, %d) -> -1", path, mode);
             return -1;
         }
@@ -1355,6 +1315,7 @@ extern "C" char *realpath(const char *__restrict__ path, char *__restrict__ reso
     debug_info("[BYPASS] >> Begin realpath(%s, %s)", path, resolved_path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
+        scope_disable_ckpt scope_ckpt;
         strcpy(resolved_path, path);
         debug_info("[BYPASS] << xpn_realpath(%s, %s) -> %s", path, resolved_path, resolved_path);
         return resolved_path;
@@ -1380,6 +1341,7 @@ extern "C" char *__realpath_chk(const char *path, char *resolved_path,
 
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
+        scope_disable_ckpt scope_ckpt;
         strcpy(resolved_path, path);
         debug_info("[BYPASS] << xpn_realpath(%s, %s) -> %s", path, resolved_path, resolved_path);
         return resolved_path;
@@ -1396,6 +1358,7 @@ extern "C" int fsync(int fd)  // TODO
     debug_info("[BYPASS] >> Begin fsync(%d)", fd);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
+        scope_disable_ckpt scope_ckpt;
         // TODO
         ret = 0;
         debug_info("[BYPASS] << xpn_fsync(%d) -> %d", fd, ret);
@@ -1411,6 +1374,7 @@ extern "C" int flock(int fd, int operation) {
     debug_info("[BYPASS] >> Begin flock(%d, %d)", fd, operation);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
+        scope_disable_ckpt scope_ckpt;
         // TODO
         ret = 0;
         debug_info("[BYPASS] << xpn_flock(%d, %d) -> %d", fd, operation, ret);
@@ -1426,10 +1390,9 @@ extern "C" int statvfs(const char *path, struct statvfs *buf) {
     debug_info("[BYPASS] >> Begin statvfs(%s, %p)", path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_statvfs(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_statvfs(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(statvfs)(path, buf);
@@ -1443,10 +1406,9 @@ extern "C" int fstatvfs(int fd, struct statvfs *buf) {
     debug_info("[BYPASS] >> Begin fstatvfs(%d, %p)", fd, buf);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fstatvfs(fd, buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_fstatvfs(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = NEXT_FNC(fstatvfs)(fd, buf);
@@ -1460,10 +1422,9 @@ extern "C" int statfs(const char *path, struct statfs *buf) {
     debug_info("[BYPASS] >> Begin statfs(%s, %p)", path, buf);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_statfs(skip_xpn_prefix(path), buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_statfs(%s, %p) -> %d", skip_xpn_prefix(path), buf, ret);
     } else {
         ret = NEXT_FNC(statfs)(path, buf);
@@ -1477,10 +1438,9 @@ extern "C" int fstatfs(int fd, struct statfs *buf) {
     debug_info("[BYPASS] >> Begin fstatfs(%d, %p)", fd, buf);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
-        DMTCP_PLUGIN_DISABLE_CKPT();
+        scope_disable_ckpt scope_ckpt;
         check_xpn_init();
         ret = xpn_fstatfs(fd, buf);
-        DMTCP_PLUGIN_ENABLE_CKPT();
         debug_info("[BYPASS] << xpn_fstatfs(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = NEXT_FNC(fstatfs)(fd, buf);

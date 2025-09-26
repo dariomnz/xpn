@@ -281,13 +281,13 @@ namespace XPN
             const sockaddr_in* sin = reinterpret_cast<const sockaddr_in*>(sa);
             inet_ntop(AF_INET, &sin->sin_addr, host_str, NI_MAXHOST);
             int port = ntohs(sin->sin_port);
-            std::cout << "IPv4 Address: " << host_str << ", Port: " << port << std::endl;
+            std::cerr << "IPv4 Address: " << host_str << ", Port: " << port << std::endl;
 
         } else if (sa->sa_family == AF_INET6) {
             const sockaddr_in6* sin6 = reinterpret_cast<const sockaddr_in6*>(sa);
             inet_ntop(AF_INET6, &sin6->sin6_addr, host_str, NI_MAXHOST);
             int port = ntohs(sin6->sin6_port);
-            std::cout << "IPv6 Address: " << host_str << ", Port: " << port << std::endl;
+            std::cerr << "IPv6 Address: " << host_str << ", Port: " << port << std::endl;
         } else {
             std::cerr << "Direction family not supported" << std::endl;
         }

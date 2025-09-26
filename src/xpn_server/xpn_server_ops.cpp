@@ -82,6 +82,10 @@ void xpn_server::do_operation ( xpn_server_comm *comm, const xpn_server_msg& msg
     case xpn_server_ops::WRITE_MDATA_FILE_SIZE:  {HANDLE_OPERATION(st_xpn_server_write_mdata_file_size,  op_write_mdata_file_size); break;}
 
     case xpn_server_ops::STATVFS_DIR:            {HANDLE_OPERATION(st_xpn_server_path,                   op_statvfs);               break;}
+
+    // Flush preload
+    case xpn_server_ops::FLUSH:                  {HANDLE_OPERATION(st_xpn_server_flush_preload,          op_flush);                 break;}
+    case xpn_server_ops::PRELOAD:                {HANDLE_OPERATION(st_xpn_server_flush_preload,          op_preload);               break;}
     //Connection API
     case xpn_server_ops::DISCONNECT: break;
     //Rest operation are unknown
@@ -604,6 +608,9 @@ void xpn_server::op_read_mdata   ( xpn_server_comm &comm, const st_xpn_server_pa
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_mdata] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_mdata] read_mdata("<<head.path.path<<")");
 
+  file_map_md_fq_item& item = get_mdata_queue(head.path.path);
+  std::unique_lock lock(item.m_writing_mutex);
+
   fd = m_filesystem->open(head.path.path, O_RDWR);
   if (fd < 0){
     if (errno == EISDIR){
@@ -625,7 +632,9 @@ void xpn_server::op_read_mdata   ( xpn_server_comm &comm, const st_xpn_server_pa
 
   m_filesystem->close(fd); //TODO: think if necesary check error in close
 
-cleanup_xpn_server_op_read_mdata:
+  cleanup_xpn_server_op_read_mdata:
+  lock.unlock();
+  release_mdata_queue(head.path.path, item);
   req.status.ret = ret;
   req.status.server_errno = errno;
 
@@ -644,6 +653,9 @@ void xpn_server::op_write_mdata ( xpn_server_comm &comm, const st_xpn_server_wri
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] write_mdata("<<head.path.path<<")");
 
+  file_map_md_fq_item& item = get_mdata_queue(head.path.path);
+  std::unique_lock lock(item.m_writing_mutex);
+
   fd = m_filesystem->open(head.path.path, O_WRONLY | O_CREAT, S_IRWXU);
   if (fd < 0){
     if (errno == EISDIR){
@@ -658,8 +670,9 @@ void xpn_server::op_write_mdata ( xpn_server_comm &comm, const st_xpn_server_wri
   ret = m_filesystem->write(fd, &head.mdata, sizeof(head.mdata));
 
   m_filesystem->close(fd); //TODO: think if necesary check error in close
-
 cleanup_xpn_server_op_write_mdata:
+  lock.unlock();
+  release_mdata_queue(head.path.path, item);
   req.ret = ret;
   req.server_errno = errno;
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] ret "<<req.ret<<" server_errno "<<req.server_errno);
@@ -723,24 +736,11 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
   XPN_PROFILE_FUNCTION_ARGS("without mutex");
   int ret = 0, fd;
   uint64_t actual_file_size = 0;
-  // st_xpn_server_status req = {};
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] write_mdata_file_size("<<head.path.path<<", "<<head.size<<")");
   
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] mutex lock");
-  auto get_mdata_queue = [&](const char* name){
-    std::unique_lock lock(m_file_map_md_fq_mutex);
-    auto it = m_file_map_md_fq.find(name);
-    if (it == m_file_map_md_fq.end()){
-      auto[new_it, _] = m_file_map_md_fq.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple());
-      new_it->second.m_count++;
-      return std::ref(new_it->second);
-    }else{
-      it->second.m_count++;
-      return std::ref(it->second);
-    }
-  };
 
   file_map_md_fq_item& item = get_mdata_queue(head.path.path);
 
@@ -760,23 +760,26 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
         uint64_t best_file_size = item.m_in_queue;
         item.m_in_queue = 0;
         lock.unlock();
-        fd = m_filesystem->open(head.path.path, O_RDWR);
-        if (fd < 0){
-          if (errno == EISDIR){
-            // if is directory there are no metadata to write so return 0
-            ret = 0;
+        {
+          std::unique_lock wlock(item.m_writing_mutex);
+          fd = m_filesystem->open(head.path.path, O_RDWR);
+          if (fd < 0){
+            if (errno == EISDIR){
+              // if is directory there are no metadata to write so return 0
+              ret = 0;
+              break;
+            }
+            ret = fd;
             break;
           }
-          ret = fd;
-          break;
-        }
-        ret = m_filesystem->pread(fd, &actual_file_size, sizeof(actual_file_size), offsetof(xpn_metadata::data, file_size));
+          ret = m_filesystem->pread(fd, &actual_file_size, sizeof(actual_file_size), offsetof(xpn_metadata::data, file_size));
 
-        if (ret > 0 && actual_file_size < best_file_size){
-          ret = m_filesystem->pwrite(fd, &best_file_size, sizeof(int64_t), offsetof(xpn_metadata::data, file_size));
+          if (ret > 0 && actual_file_size < best_file_size){
+            ret = m_filesystem->pwrite(fd, &best_file_size, sizeof(int64_t), offsetof(xpn_metadata::data, file_size));
+          }
+          
+          m_filesystem->close(fd); //TODO: think if necesary check error in close
         }
-        
-        m_filesystem->close(fd); //TODO: think if necesary check error in close
         lock.lock();
         item.m_writing.store(false);
       }else{
@@ -785,17 +788,33 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
     }
   }
 
-  {
-    std::unique_lock lock(m_file_map_md_fq_mutex);
-    item.m_count--;
-    if (item.m_count == 0){
-      m_file_map_md_fq.erase(head.path.path);
-    }
-  }
+  release_mdata_queue(head.path.path, item);
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] mutex unlock");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] write_mdata_file_size("<<head.path.path<<", "<<head.size<<")="<< ret);
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] << End");
+}
+
+xpn_server::file_map_md_fq_item &xpn_server::get_mdata_queue(const char *path) {
+  std::unique_lock lock(m_file_map_md_fq_mutex);
+  auto it = m_file_map_md_fq.find(path);
+  if (it == m_file_map_md_fq.end()) {
+    auto [new_it, _] =
+      m_file_map_md_fq.emplace(std::piecewise_construct, std::forward_as_tuple(path), std::forward_as_tuple());
+    new_it->second.m_count++;
+    return new_it->second;
+  } else {
+    it->second.m_count++;
+    return it->second;
+  }
+}
+
+void xpn_server::release_mdata_queue(const char *path, file_map_md_fq_item &item) {
+  std::unique_lock lock(m_file_map_md_fq_mutex);
+  item.m_count--;
+  if (item.m_count == 0) {
+    m_file_map_md_fq.erase(path);
+  }
 }
 
 void xpn_server::op_statvfs ( xpn_server_comm &comm, const st_xpn_server_path &head, int rank_client_id, int tag_client_id )

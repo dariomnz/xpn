@@ -398,7 +398,7 @@ int nfi_xpn_server::nfi_rename (const std::string &path, const std::string &new_
   }
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_rename] nfi_xpn_server_rename("<<srv_path<<", "<<new_srv_path<<")="<<ret);
-  debug_info("[NFI_XPN] [nfi_xpn_server_rename] >> End\n");
+  debug_info("[NFI_XPN] [nfi_xpn_server_rename] >> End");
 
   return ret;
 }
@@ -429,7 +429,7 @@ int nfi_xpn_server::nfi_getattr (const std::string &path, struct ::stat &st)
   }
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_getattr] nfi_xpn_server_getattr("<<srv_path<<")="<<ret);
 
-  debug_info("[NFI_XPN] [nfi_xpn_server_getattr] >> End\n");
+  debug_info("[NFI_XPN] [nfi_xpn_server_getattr] >> End");
 
   return ret;
 }
@@ -679,7 +679,7 @@ int nfi_xpn_server::nfi_read_mdata (const std::string &path, xpn_metadata &mdata
 
   memcpy(&mdata.m_data, &req.mdata, sizeof(req.mdata));
 
-  debug_info("[NFI_XPN] [nfi_xpn_server_read_mdata] >> End\n");
+  debug_info("[NFI_XPN] [nfi_xpn_server_read_mdata] >> End");
 
   return ret;
 }
@@ -719,8 +719,77 @@ int nfi_xpn_server::nfi_write_mdata (const std::string &path, const xpn_metadata
   }
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_write_mdata] nfi_xpn_server_write_mdata("<<srv_path<<")="<<ret);
 
-  debug_info("[NFI_XPN] [nfi_xpn_server_write_mdata] >> End\n");
+  debug_info("[NFI_XPN] [nfi_xpn_server_write_mdata] >> End");
 
+  return ret;
+}
+
+int nfi_xpn_server::nfi_flush (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_flush] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload msg;
+    
+  std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = strlen(path);
+  strcpy(msg.paths.path2(), path);
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::FLUSH, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_XPN] [nfi_flush] >> End");
+  return ret;
+}
+
+int nfi_xpn_server::nfi_preload (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload msg;
+  
+  size_t length = strlen(path);
+  strcpy(msg.paths.path1(), path);
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = m_path.copy(msg.paths.path2(), m_path.size());
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::PRELOAD, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_XPN] [nfi_preload] >> End");
+  return ret;
+}
+
+int nfi_xpn_server::nfi_response() {
+  
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_response] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_response] nfi_response()");
+
+  st_xpn_server_status req;
+    
+  ret = nfi_read_response(req);
+
+  if (ret > 0) {
+    if (req.ret < 0) {
+      errno = req.server_errno;
+      ret = req.ret;
+    }
+  }
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_response] nfi_response()="<<ret);
+  debug_info("[NFI_XPN] [nfi_response] >> End");
   return ret;
 }
 

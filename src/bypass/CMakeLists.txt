@@ -4,17 +4,24 @@ if(ENABLE_MPI_SERVER)
     include_directories("${MPI_INCLUDE_DIR}")
 endif()
 
-add_library(xpn_bypass SHARED "xpn_bypass.cpp")
-
-set_target_properties(xpn_bypass PROPERTIES PREFIX "")
-
-target_link_libraries(xpn_bypass PRIVATE xpn pthread dl )
-
-target_include_directories(xpn_bypass PRIVATE 
-    "${PROJECT_SOURCE_DIR}/src"
+set(BYPASS_SOURCES
+    xpn_bypass
+    xpn_bypass_debug
 )
 
-install(TARGETS xpn_bypass LIBRARY DESTINATION lib)
+foreach (file ${BYPASS_SOURCES})
+    add_library(${file} SHARED "${file}.cpp")
+
+    set_target_properties(${file} PROPERTIES PREFIX "")
+
+    target_link_libraries(${file} PRIVATE xpn pthread dl )
+
+    target_include_directories(${file} PRIVATE 
+        "${PROJECT_SOURCE_DIR}/src"
+    )
+
+    install(TARGETS ${file} LIBRARY DESTINATION lib)
+endforeach (file)
 
 if(DMTCP_PATH)
     message(STATUS "Building DMTCP pluging")
