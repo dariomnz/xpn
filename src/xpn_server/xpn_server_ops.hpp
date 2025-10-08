@@ -27,6 +27,7 @@
 
 #include "base_cpp/filesystem.hpp"
 #include "xpn/xpn_metadata.hpp"
+#include "xpn_filesystem/xpn_server_db.hpp"
 
 /* Operations */
 
@@ -44,6 +45,7 @@ enum class xpn_server_ops {
     RENAME_FILE,
     GETATTR_FILE,
     SETATTR_FILE,
+    REQUEST_BLOCK,
 
     // Directory operations
     MKDIR_DIR,
@@ -86,6 +88,7 @@ static const std::array<std::string, static_cast<uint64_t>(xpn_server_ops::size)
     "RENAME_FILE",
     "GETATTR_FILE",
     "SETATTR_FILE",
+    "REQUEST_BLOCK",
 
     // Directory operations
     "MKDIR_DIR",
@@ -192,6 +195,20 @@ struct st_xpn_server_rename {
     xpn_server_double_path paths;
 
     uint64_t get_size() { return paths.get_size(); }
+};
+
+struct st_xpn_server_request_block {
+    xpn_server_db::xpn_server_block block;
+    xpn_server_path path;
+
+    uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, path) + path.get_size(); }
+};
+
+struct st_xpn_server_request_block_req {
+    xpn_server_db::xpn_server_block block;
+    struct st_xpn_server_status status;
+
+    uint64_t get_size() { return sizeof(*this); }
 };
 
 #define eq_cast(val1, val2) val1 = static_cast<std::remove_reference_t<decltype(val1)>>(val2)
@@ -425,6 +442,8 @@ constexpr uint64_t get_xpn_server_max_msg_size() {
     if (size < sizeof(st_xpn_server_write_mdata_file_size)) size = sizeof(st_xpn_server_write_mdata_file_size);
     if (size < sizeof(st_xpn_server_statvfs_req)) size = sizeof(st_xpn_server_statvfs_req);
     if (size < sizeof(st_xpn_server_flush_preload)) size = sizeof(st_xpn_server_flush_preload);
+    if (size < sizeof(st_xpn_server_request_block)) size = sizeof(st_xpn_server_request_block);
+    if (size < sizeof(st_xpn_server_request_block_req)) size = sizeof(st_xpn_server_request_block_req);
     return size;
 }
 

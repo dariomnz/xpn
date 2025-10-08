@@ -22,6 +22,7 @@
 #include "nfi_local.hpp"
 #include "base_cpp/xpn_env.hpp"
 #include "xpn/xpn_file.hpp"
+#include "xpn_filesystem/xpn_filesystem.hpp"
 #include "xpn_server/xpn_server_ops.hpp"
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -527,8 +528,39 @@ int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::dat
     PROXY(close)(fd); //TODO: think if necesary check error in close
   }
 
-  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
-  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] << End");
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] << End");
+  return ret;
+}
+
+int nfi_local::nfi_request_block (const std::string &path, xpn_server_db::xpn_server_block &block, int local_server_id, int block_offset)
+{
+  int ret;
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_request_block] >> Begin");
+
+  std::string srv_path = m_path + "/" + path;
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_request_block] nfi_request_block("<<srv_path<<")");
+
+  // is necessary to do it in xpn_server in order to ensure atomic operation
+  if (m_protocol == "file") {
+    static auto fs = xpn_filesystem::Create(filesystem_mode::disk);
+    ret = xpn_server_db{}.request_block(fs, srv_path.c_str(), block_offset, local_server_id, block);
+  }else{
+    struct st_xpn_server_request_block msg = {};
+    struct st_xpn_server_request_block_req req = {};
+    uint64_t length = srv_path.copy(msg.path.path, srv_path.size());
+    msg.path.path[length] = '\0';
+    msg.path.size = length + 1;
+    msg.block.block_offset = block_offset;
+    msg.block.server_id = local_server_id;
+    ret = nfi_do_request(xpn_server_ops::REQUEST_BLOCK, msg, req);
+    block = req.block;
+  }
+
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_request_block] nfi_request_block("<<srv_path<<")="<<ret);
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_request_block] << End");
   return ret;
 }
 

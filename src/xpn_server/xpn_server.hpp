@@ -21,7 +21,8 @@
 
 #pragma once
 
-#include "filesystem/xpn_server_filesystem.hpp"
+#include "xpn_filesystem/xpn_filesystem.hpp"
+#include "xpn_filesystem/xpn_server_db.hpp"
 #include "xpn_server_params.hpp"
 #include "xpn_server_comm.hpp"
 #include "xpn_server_ops.hpp"
@@ -65,7 +66,9 @@ namespace XPN
 
         queue_pool<xpn_server_msg> msg_pool;
 
-        std::unique_ptr<xpn_server_filesystem> m_filesystem;
+        std::unique_ptr<xpn_filesystem> m_filesystem;
+
+        xpn_server_db m_db; 
 
         // op_write_mdata_file_size
         struct file_map_md_fq_item {
@@ -91,6 +94,7 @@ namespace XPN
         void op_rename      ( xpn_server_comm &comm, const st_xpn_server_rename       &head, int rank_client_id, int tag_client_id );
         void op_setattr     ( xpn_server_comm &comm, const st_xpn_server_setattr      &head, int rank_client_id, int tag_client_id );
         void op_getattr     ( xpn_server_comm &comm, const st_xpn_server_path         &head, int rank_client_id, int tag_client_id );
+        void op_req_block   ( xpn_server_comm &comm, const st_xpn_server_request_block&head, int rank_client_id, int tag_client_id );
 
         // Directory operations
         void op_mkdir       ( xpn_server_comm &comm, const st_xpn_server_path_flags   &head, int rank_client_id, int tag_client_id );

@@ -56,7 +56,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
     int buf_len;
     off64_t offset_dest;
     off_t offset_src;
-    ssize_t read_size, write_size;
+    ssize_t read_size = 0, write_size = 0;
     struct stat st_src = {};
     // Alocate buffer
     buf_len = blocksize;
@@ -79,7 +79,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
 
     ret = stat(src_path, &st_src);
     if (ret < 0 && errno != ENOENT) {
-        print_error("stat: "<<src_path);
+        print_error("stat: " << src_path);
         free(buf);
         return -1;
     }
@@ -87,7 +87,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         if (rank == 0) {
             ret = mkdir(dest_path, st_src.st_mode);
             if (ret < 0 && errno != EEXIST) {
-                print_error("mkdir: "<<dest_path);
+                print_error("mkdir: " << dest_path);
                 free(buf);
                 return -1;
             }
@@ -103,7 +103,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         if (rank == master_node) {
             fd_dest = creat(dest_path, st_src.st_mode);
             if (fd_dest < 0) {
-                print_error("creat 1: "<<dest_path);
+                print_error("creat 1: " << dest_path);
                 printf("creat: %s mode %d\n", dest_path, st_src.st_mode);
             } else {
                 close(fd_dest);
@@ -116,7 +116,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         }
         fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
         if (fd_src < 0 && errno != ENOENT) {
-            print_error("open 1: "<<src_path);
+            print_error("open 1: " << src_path);
             printf("open 1: %s\n", src_path);
             free(buf);
             return -1;
@@ -124,7 +124,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         lfi_barrier(&group);
         fd_dest = open64(dest_path, O_WRONLY | O_LARGEFILE);
         if (fd_dest < 0) {
-            print_error("open 2: "<<dest_path);
+            print_error("open 2: " << dest_path);
             printf("open 2: %s\n", dest_path);
             free(buf);
             return -1;
@@ -243,7 +243,7 @@ int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int
     if (rank == master_node) {
         dir = opendir(dir_name);
         if (dir == NULL) {
-            print_error("opendir: "<<dir_name);
+            print_error("opendir: " << dir_name);
             return -1;
         }
         struct dirent *entry;
@@ -265,7 +265,7 @@ int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int
 
             ret = stat(path, &stat_buf);
             if (ret < 0) {
-                print_error("stat: "<<path);
+                print_error("stat: " << path);
                 printf("%s\n", path);
                 entry = readdir(dir);
                 continue;
@@ -404,28 +404,28 @@ int preload_copy(const char *entry, int is_file, const char *dir_name, const cha
 
     ret = stat(src_path, &st);
     if (ret < 0) {
-        print_error("stat: "<<src_path);
+        print_error("stat: " << src_path);
         free(buf);
         return -1;
     }
     if (!is_file) {
         ret = mkdir(dest_path, st.st_mode);
         if (ret < 0 && errno != EEXIST) {
-            print_error("mkdir: "<<dest_path);
+            print_error("mkdir: " << dest_path);
             free(buf);
             return -1;
         }
     } else if (is_file) {
         fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
         if (fd_src < 0) {
-            print_error("open 1: "<<src_path);
+            print_error("open 1: " << src_path);
             free(buf);
             return -1;
         }
 
         fd_dest = open64(dest_path, O_CREAT | O_WRONLY | O_TRUNC | O_LARGEFILE, st.st_mode);
         if (fd_dest < 0) {
-            print_error("open 2: "<<dest_path);
+            print_error("open 2: " << dest_path);
             free(buf);
             return -1;
         }
@@ -555,7 +555,7 @@ int preload_list(const char *dir_name, const char *dest_prefix, int blocksize, i
 
         ret = stat(path, &stat_buf);
         if (ret < 0) {
-            print_error("stat: "<<path);
+            print_error("stat: " << path);
             printf("%s\n", path);
             entry = readdir(dir);
             continue;

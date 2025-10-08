@@ -74,24 +74,24 @@ struct print_errno {
         std::ostringstream out;                                                                                \
         out << "[" << get_time_stamp() << "] [" << __func__ << "] [" << file_name(__FILE__) << ":" << __LINE__ \
             << "] ";                                                                                           \
-        fprintf(stderr, out.str().c_str());                                                                    \
+        fprintf(stderr, "%s", out.str().c_str());                                                              \
     }
 
 #ifdef DEBUG
-#define XPN_DEBUG(out_format)               \
-    {                                       \
-        XPN_DEBUG_COMMON_HEADER             \
-        std::ostringstream out;             \
-        out << out_format << std::endl;     \
-        fprintf(stderr, out.str().c_str()); \
+#define XPN_DEBUG(out_format)                     \
+    {                                             \
+        XPN_DEBUG_COMMON_HEADER                   \
+        std::ostringstream out;                   \
+        out << out_format << std::endl;           \
+        fprintf(stderr, "%s", out.str().c_str()); \
     }
 #else
-#define XPN_DEBUG(out_format)                \
-    if (xpn_env::get_instance().xpn_debug) { \
-        XPN_DEBUG_COMMON_HEADER              \
-        std::ostringstream out;              \
-        out << out_format << std::endl;      \
-        fprintf(stderr, out.str().c_str());  \
+#define XPN_DEBUG(out_format)                     \
+    if (xpn_env::get_instance().xpn_debug) {      \
+        XPN_DEBUG_COMMON_HEADER                   \
+        std::ostringstream out;                   \
+        out << out_format << std::endl;           \
+        fprintf(stderr, "%s", out.str().c_str()); \
     }
 #endif
 
@@ -111,21 +111,21 @@ struct print_errno {
         std::ostringstream out;                                                                                        \
         out << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                              \
-        fprintf(stderr, out.str().c_str());                                                                            \
+        fprintf(stderr, "%s", out.str().c_str());                                                                      \
     }
 #define debug_warning(out_format)                                                                          \
     {                                                                                                      \
         std::ostringstream out;                                                                            \
         out << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
             << out_format << std::endl;                                                                    \
-        fprintf(stderr, out.str().c_str());                                                                \
+        fprintf(stderr, "%s", out.str().c_str());                                                          \
     }
 #define debug_info(out_format)                                                                                        \
     {                                                                                                                 \
         std::ostringstream out;                                                                                       \
         out << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                             \
-        fprintf(stderr, out.str().c_str());                                                                           \
+        fprintf(stderr, "%s", out.str().c_str());                                                                     \
     }
 #else
 #define debug_error(out_format)

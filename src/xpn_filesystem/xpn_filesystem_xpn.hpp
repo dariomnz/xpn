@@ -21,11 +21,11 @@
 
 #pragma once
 
-#include "xpn_server_filesystem.hpp"
+#include "xpn_filesystem.hpp"
 
 namespace XPN {
 
-class xpn_server_filesystem_xpn : public xpn_server_filesystem {
+class xpn_filesystem_xpn : public xpn_filesystem {
    public:
     int creat(const char *path, uint32_t mode) override;
     int open(const char *path, int flags) override;

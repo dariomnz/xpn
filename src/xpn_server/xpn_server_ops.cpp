@@ -67,6 +67,7 @@ void xpn_server::do_operation ( xpn_server_comm *comm, const xpn_server_msg& msg
     case xpn_server_ops::RENAME_FILE:            {HANDLE_OPERATION(st_xpn_server_rename,                 op_rename);                break;}
     case xpn_server_ops::GETATTR_FILE:           {HANDLE_OPERATION(st_xpn_server_path,                   op_getattr);               break;}
     case xpn_server_ops::SETATTR_FILE:           {HANDLE_OPERATION(st_xpn_server_setattr,                op_setattr);               break;}
+    case xpn_server_ops::REQUEST_BLOCK:          {HANDLE_OPERATION(st_xpn_server_request_block,          op_req_block);             break;}
 
     //Directory API
     case xpn_server_ops::MKDIR_DIR:              {HANDLE_OPERATION(st_xpn_server_path_flags,             op_mkdir);                 break;}
@@ -449,6 +450,23 @@ void xpn_server::op_setattr ( [[maybe_unused]] xpn_server_comm &comm, [[maybe_un
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_setattr] SETATTR(...)=(...)");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_setattr] << End");
+}
+
+void xpn_server::op_req_block ( xpn_server_comm &comm, const st_xpn_server_request_block &head, int rank_client_id, int tag_client_id )
+{
+  XPN_PROFILE_FUNCTION();
+  struct st_xpn_server_request_block_req req = {};
+
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_req_block] >> Begin");
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_req_block] stat("<<head.path.path<<")");
+
+  req.status.ret = m_db.request_block(m_filesystem, head.path.path, head.block.block_offset, head.block.server_id, req.block);
+  req.status.server_errno = errno;
+
+  comm.write_data((char *)&req,sizeof(struct st_xpn_server_request_block_req), rank_client_id, tag_client_id);
+
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_req_block] stat("<<head.path.path<<")="<< req.status.ret);
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_req_block] << End");
 }
 
 //Directory API

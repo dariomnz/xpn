@@ -11,11 +11,11 @@ file(GLOB XPN_SOURCE
 )
 
 add_library(xpn SHARED ${XPN_HEADERS} ${XPN_SOURCE})
-target_link_libraries(xpn PRIVATE xpn_base_cpp xpn_core xpn_nfi)
+target_link_libraries(xpn PRIVATE xpn_base_cpp xpn_filesystem xpn_core xpn_nfi)
 
 add_library(xpn_static STATIC $<TARGET_OBJECTS:xpn>)
 set_target_properties(xpn_static PROPERTIES OUTPUT_NAME xpn)
-target_link_libraries(xpn_static PRIVATE xpn_base_cpp xpn_core xpn_nfi)
+target_link_libraries(xpn_static PRIVATE xpn_base_cpp xpn_filesystem xpn_core xpn_nfi)
 
 target_include_directories(xpn PUBLIC
 	"${PROJECT_SOURCE_DIR}/src"

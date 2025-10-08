@@ -724,6 +724,36 @@ int nfi_xpn_server::nfi_write_mdata (const std::string &path, const xpn_metadata
   return ret;
 }
 
+int nfi_xpn_server::nfi_request_block (const std::string &path, xpn_server_db::xpn_server_block &block, int local_server_id, int block_offset)
+{
+  int ret;
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_request_block] >> Begin");
+
+  std::string srv_path = m_path + "/" + path;
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_request_block] nfi_request_block("<<srv_path<<")");
+
+  // is necessary to do it in xpn_server in order to ensure atomic operation
+  struct st_xpn_server_request_block msg = {};
+  struct st_xpn_server_request_block_req req = {};
+  uint64_t length = srv_path.copy(msg.path.path, srv_path.size());
+  msg.path.path[length] = '\0';
+  msg.path.size = length + 1;
+  msg.block.block_offset = block_offset;
+  msg.block.server_id = local_server_id;
+  ret = nfi_do_request(xpn_server_ops::REQUEST_BLOCK, msg, req);
+  block = req.block;  
+  if (req.status.ret < 0){
+    errno = req.status.server_errno;
+    ret = req.status.ret;
+  }
+
+  debug_info("[Server=%s] [NFI_XPN] [nfi_request_block] nfi_request_block("<<srv_path<<")="<<ret);
+  debug_info("[Server=%s] [NFI_XPN] [nfi_request_block] << End");
+  return ret;
+}
+
 int nfi_xpn_server::nfi_flush (const char *path)
 {
   int ret;

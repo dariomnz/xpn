@@ -87,6 +87,7 @@ namespace XPN
         virtual int nfi_statvfs     (const std::string &path, struct ::statvfs &inf) = 0;
         virtual int nfi_read_mdata  (const std::string &path, xpn_metadata &mdata) = 0;
         virtual int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
+        virtual int nfi_request_block (const std::string &path, xpn_server_db::xpn_server_block &block, int local_server_id, int block_offset) = 0;
 
         virtual int nfi_flush       (const char *path) = 0;
         virtual int nfi_preload     (const char *path) = 0;

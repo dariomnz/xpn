@@ -34,8 +34,7 @@ namespace XPN
 
     void xpn_rw_buffer::calculate_reads()
     {
-        int64_t new_offset, l_offset;
-        int l_serv;
+        int64_t new_offset;
         uint64_t l_size, count;
 
         new_offset = m_offset;
@@ -43,7 +42,13 @@ namespace XPN
 
         while(m_size>count)
         {
-            xpn_rw::read_get_block(m_file, new_offset, l_offset, l_serv);
+            int64_t block_num = new_offset / m_file.m_mdata.m_data.block_size;
+            xpn_server_db::xpn_server_block block = {};
+            int ret = m_file.m_part.m_data_serv[m_file.m_mdata.master_file()]->nfi_request_block(
+                m_file.m_path, block, m_file.m_part.m_local_serv, block_num);
+            if (ret < 0) {
+                unreachable("TODO");
+            }
 
             // l_size is the remaining bytes from new_offset until the end of the block
             l_size = m_file.m_part.m_block_size -
@@ -55,12 +60,13 @@ namespace XPN
 
             xpn_rw_buffer::rw_buffer buff;
 
-            buff.offset_serv = l_offset;
+            buff.offset_serv = block.server_block_offset * m_file.m_mdata.m_data.block_size +
+                               (new_offset % m_file.m_part.m_block_size);
             buff.size = l_size;
             buff.buffer = m_buffer + count;
             buff.offset_buff = count;
 
-            m_ops[l_serv].push_back(buff);
+            m_ops[block.server_id].push_back(buff);
 
             count = l_size + count;
             new_offset = m_offset + count;
@@ -90,8 +96,7 @@ namespace XPN
 
     void xpn_rw_buffer::calculate_writes()
     {
-        int64_t new_offset, l_offset;
-        int l_serv;
+        int64_t new_offset;
         uint64_t l_size = 0, count;
 
         new_offset = m_offset;
@@ -99,26 +104,29 @@ namespace XPN
 
         while(m_size>count)
         {
-            for (int j = 0; j < m_file.m_part.m_replication_level + 1; j++)
-            {
-                if (xpn_rw::write_get_block(m_file, new_offset, j, l_offset, l_serv) == 0){
-                    // l_size is the remaining bytes from new_offset until the end of the block
-                    l_size = m_file.m_part.m_block_size -
-                        (new_offset%m_file.m_part.m_block_size);
-
-                    // If l_size > the remaining bytes to read/write, then adjust l_size
-                    if ((m_size - count) < l_size)
-                        l_size = m_size - count;
-
-                    xpn_rw_buffer::rw_buffer buff;
-
-                    buff.offset_serv = l_offset;
-                    buff.size = l_size;
-                    buff.buffer = m_buffer + count;
-                    buff.offset_buff = count;
-
-                    m_ops[l_serv].push_back(buff);
+            for (int j = 0; j < m_file.m_part.m_replication_level + 1; j++) {
+                int64_t block_num = new_offset / m_file.m_mdata.m_data.block_size;
+                xpn_server_db::xpn_server_block block = {};
+                int ret = m_file.m_part.m_data_serv[m_file.m_mdata.master_file()]->nfi_request_block(
+                    m_file.m_path, block, m_file.m_part.m_local_serv, block_num);
+                if (ret < 0) {
+                    unreachable("TODO");
                 }
+                // l_size is the remaining bytes from new_offset until the end of the block
+                l_size = m_file.m_part.m_block_size - (new_offset % m_file.m_part.m_block_size);
+
+                // If l_size > the remaining bytes to read/write, then adjust l_size
+                if ((m_size - count) < l_size) l_size = m_size - count;
+
+                xpn_rw_buffer::rw_buffer buff;
+
+                buff.offset_serv = block.server_block_offset * m_file.m_mdata.m_data.block_size +
+                                   (new_offset % m_file.m_part.m_block_size);
+                buff.size = l_size;
+                buff.buffer = m_buffer + count;
+                buff.offset_buff = count;
+
+                m_ops[block.server_id].push_back(buff);
             }
             count = l_size + count;
             new_offset = m_offset + count;

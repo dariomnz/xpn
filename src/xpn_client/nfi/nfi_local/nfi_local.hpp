@@ -54,6 +54,8 @@ namespace XPN
         int nfi_statvfs     (const std::string &path, struct ::statvfs &inf) override;
         int nfi_read_mdata  (const std::string &path, xpn_metadata &mdata) override;
         int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) override;
+        int nfi_request_block (const std::string &path, xpn_server_db::xpn_server_block &block, int local_server_id, int block_offset) override;
+
         int nfi_flush       (const char *path) override;
         int nfi_preload     (const char *path) override;
         int nfi_response    () override;

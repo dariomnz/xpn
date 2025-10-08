@@ -14,6 +14,7 @@ cd $1
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$2/lib
 
 cmake -S .. -B . \
+    -D CMAKE_EXPORT_COMPILE_COMMANDS=1 \
     -D BUILD_TESTS=true \
     -D CMAKE_INSTALL_PREFIX=$2 \
     -D CMAKE_C_COMPILER=gcc \
@@ -22,7 +23,7 @@ cmake -S .. -B . \
     -D MPI_INCLUDE_DIR=/usr/include/x86_64-linux-gnu/mpich \
     -D ENABLE_FABRIC_SERVER=on \
     -D ENABLE_FUSE=on \
-    -D ENABLE_MQTT_SERVER=on
+    -D ENABLE_MQTT_SERVER=off
 
 # cmake -S .. -B . \
 #     -D BUILD_TESTS=true \

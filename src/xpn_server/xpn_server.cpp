@@ -289,7 +289,7 @@ xpn_server::xpn_server(int argc, char *argv[]) : m_params(argc, argv)
     if (xpn_env::get_instance().xpn_stats){
         m_window_stats = std::make_unique<xpn_window_stats>(m_stats);
     }
-    m_filesystem = xpn_server_filesystem::Create(m_params.fs_mode);
+    m_filesystem = xpn_filesystem::Create(m_params.fs_mode);
     if (!m_filesystem){
         std::cerr << "Error: unexpected error cannot create filesystem interface" << std::endl;
         std::raise(SIGTERM);

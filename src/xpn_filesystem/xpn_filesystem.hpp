@@ -34,13 +34,13 @@ enum class filesystem_mode {
     xpn = 1,
 };
 
-class xpn_server_filesystem {
+class xpn_filesystem {
    public:
-    static std::unique_ptr<xpn_server_filesystem> Create(filesystem_mode mode);
+    static std::unique_ptr<xpn_filesystem> Create(filesystem_mode mode);
 
    public:
-    xpn_server_filesystem() = default;
-    virtual ~xpn_server_filesystem() = default;
+    xpn_filesystem() = default;
+    virtual ~xpn_filesystem() = default;
 
     virtual int creat(const char *path, uint32_t mode) = 0;
     virtual int open(const char *path, int flags) = 0;

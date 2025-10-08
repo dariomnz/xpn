@@ -19,7 +19,7 @@
  *
  */
 
-#include "xpn_server_filesystem_disk.hpp"
+#include "xpn_filesystem_xpn.hpp"
 
 #include <fcntl.h>
 
@@ -27,147 +27,148 @@
 #include "base_cpp/filesystem.hpp"
 #include "base_cpp/proxy.hpp"
 
+#include "xpn.h"
+
 namespace XPN {
 
-int xpn_server_filesystem_disk::creat(const char *path, uint32_t mode) {
+int xpn_filesystem_xpn::creat(const char *path, uint32_t mode) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(creat)(path, mode);
+    auto ret = xpn_creat(path, mode);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::open(const char *path, int flags) {
+int xpn_filesystem_xpn::open(const char *path, int flags) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(open)(path, flags);
+    auto ret = xpn_open(path, flags);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::open(const char *path, int flags, uint32_t mode) {
+int xpn_filesystem_xpn::open(const char *path, int flags, uint32_t mode) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(open)(path, flags, mode);
+    auto ret = xpn_open(path, flags, mode);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::close(int fd) {
+int xpn_filesystem_xpn::close(int fd) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(close)(fd);
+    auto ret = xpn_close(fd);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::fsync(int fd) {
+int xpn_filesystem_xpn::fsync([[maybe_unused]] int fd) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(fsync)(fd);
+    // auto ret = xpn_fsync(fd);
+    debug_info(" << END");
+    return 0;
+}
+
+int xpn_filesystem_xpn::unlink(const char *path) {
+    debug_info(" >> BEGIN");
+    auto ret = xpn_unlink(path);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::unlink(const char *path) {
+int xpn_filesystem_xpn::rename(const char *oldPath, const char *newPath) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(unlink)(path);
+    auto ret = xpn_rename(oldPath, newPath);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::rename(const char *oldPath, const char *newPath) {
+int xpn_filesystem_xpn::stat(const char *path, struct ::stat *st) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(rename)(oldPath, newPath);
+    auto ret = xpn_stat(path, st);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::stat(const char *path, struct ::stat *st) {
+int64_t xpn_filesystem_xpn::write(int fd, const void *data, uint64_t len) {
     debug_info(" >> BEGIN");
-    #ifdef _STAT_VER
-    auto ret = PROXY(__xstat)(_STAT_VER, path, st);
-    #else
-    auto ret = PROXY(stat)(path, st);
-    #endif
+    auto ret = xpn_write(fd, data, len);
     debug_info(" << END");
     return ret;
 }
 
-int64_t xpn_server_filesystem_disk::write(int fd, const void *data, uint64_t len) {
+int64_t xpn_filesystem_xpn::pwrite(int fd, const void *data, uint64_t len, int64_t offset) {
     debug_info(" >> BEGIN");
-    auto ret = filesystem::write(fd, data, len);
+    auto ret = xpn_pwrite(fd, data, len, offset);
     debug_info(" << END");
     return ret;
 }
 
-int64_t xpn_server_filesystem_disk::pwrite(int fd, const void *data, uint64_t len, int64_t offset) {
+int64_t xpn_filesystem_xpn::read(int fd, void *data, uint64_t len) {
     debug_info(" >> BEGIN");
-    auto ret = filesystem::pwrite(fd, data, len, offset);
+    auto ret = xpn_read(fd, data, len);
     debug_info(" << END");
     return ret;
 }
 
-int64_t xpn_server_filesystem_disk::read(int fd, void *data, uint64_t len) {
+int64_t xpn_filesystem_xpn::pread(int fd, void *data, uint64_t len, int64_t offset) {
     debug_info(" >> BEGIN");
-    auto ret = filesystem::read(fd, data, len);
+    auto ret = xpn_pread(fd, data, len, offset);
     debug_info(" << END");
     return ret;
 }
 
-int64_t xpn_server_filesystem_disk::pread(int fd, void *data, uint64_t len, int64_t offset) {
+int xpn_filesystem_xpn::mkdir(const char *path, uint32_t mode) {
     debug_info(" >> BEGIN");
-    auto ret = filesystem::pread(fd, data, len, offset);
+    auto ret = xpn_mkdir(path, mode);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::mkdir(const char *path, uint32_t mode) {
+::DIR *xpn_filesystem_xpn::opendir(const char *path) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(mkdir)(path, mode);
+    auto ret = xpn_opendir(path);
     debug_info(" << END");
     return ret;
 }
 
-::DIR *xpn_server_filesystem_disk::opendir(const char *path) {
+int xpn_filesystem_xpn::closedir(::DIR *dir) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(opendir)(path);
+    auto ret = xpn_closedir(dir);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::closedir(::DIR *dir) {
+int xpn_filesystem_xpn::rmdir(const char *path) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(closedir)(dir);
+    auto ret = xpn_rmdir(path);
     debug_info(" << END");
     return ret;
 }
 
-int xpn_server_filesystem_disk::rmdir(const char *path) {
+struct ::dirent *xpn_filesystem_xpn::readdir(::DIR *dir) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(rmdir)(path);
+    auto ret = xpn_readdir(dir);
     debug_info(" << END");
     return ret;
 }
 
-struct ::dirent *xpn_server_filesystem_disk::readdir(::DIR *dir) {
+int64_t xpn_filesystem_xpn::telldir([[maybe_unused]] ::DIR *dir) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(readdir)(dir);
+    // auto ret = xpn_telldir(dir);
+    auto ret = 0;
+    unreachable("TODO");
     debug_info(" << END");
     return ret;
 }
 
-int64_t xpn_server_filesystem_disk::telldir(::DIR *dir) {
+void xpn_filesystem_xpn::seekdir([[maybe_unused]] ::DIR *dir, [[maybe_unused]] int64_t pos) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(telldir)(dir);
-    debug_info(" << END");
-    return ret;
-}
-
-void xpn_server_filesystem_disk::seekdir(::DIR *dir, int64_t pos) {
-    debug_info(" >> BEGIN");
-    PROXY(seekdir)(dir, pos);
+    // xpn_seekdir(dir, pos);
+    unreachable("TODO");
     debug_info(" << END");
 }
 
-int xpn_server_filesystem_disk::statvfs(const char *path, struct ::statvfs *buff) {
+int xpn_filesystem_xpn::statvfs(const char *path, struct ::statvfs *buff) {
     debug_info(" >> BEGIN");
-    auto ret = PROXY(statvfs)(path, buff);
+    auto ret = xpn_statvfs(path, buff);
     debug_info(" << END");
     return ret;
 }
