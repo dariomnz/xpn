@@ -2,7 +2,7 @@
 
 This guide explains the steps to establish a connection using SSH tunneling and configure the client, proxy server, and storage servers for an XPN deployment.
 
-In this setup, we use 4 different machines: the client machine, a proxy server, and two backend storage servers.
+In this example setup, we use 4 different machines: the client machine, a proxy server, and two backend storage servers.
 
 ```mermaid
 graph TD
@@ -27,6 +27,7 @@ ssh -N -f -L *:3457:localhost:3457 tester005@c3.uc3m.es
 
 ### 2. Client Configuration
 This configuration specifies how the client connects to the service, this client run in the local machine where the SSH tunnel was deployed.
+If an SSH tunnel is not necessary, you can use the name or IP address of the proxy server instead of localhost.
 
 ```ini
 [partition]
@@ -65,11 +66,13 @@ xpn_server --server_type sck --thread_mode pool --port 3456 --comm_port 3457 --p
 
 ### 6. Usage in client
 This step shows two ways to use the XPN service from the client.
+It is necessary to use ```export XPN_LOCALITY=0``` to disable the use of locality, since a proxy server is being used.
 
 #### A. Using the Bypass Library
 The environment variable LD_PRELOAD is used to load a bypass library before any other library when an application starts. This library intercepts standard file system calls (like open, read, write) and redirects them to the XPN proxy server instead of the local file system.
 ```sh
 # Run in client:
+export XPN_LOCALITY=0
 export XPN_CONF=<path to conf of step 2>
 export LD_PRELOAD=<path to bypass library>
 ./test/integrity/bypass/open-write-close /tmp/expand/xpn/test.txt 10
@@ -79,6 +82,7 @@ export LD_PRELOAD=<path to bypass library>
 This method uses an application compiled to link directly against the XPN library, making explicit XPN calls without relying on the LD_PRELOAD interception.
 ```sh
 # Run in client:
+export XPN_LOCALITY=0
 export XPN_CONF=<path to conf of step 2>
 ./test/performance/xpn/open-write-close xpn/test.txt 10
 ```
