@@ -25,7 +25,7 @@ set -e
 function usage {
     echo ""
     echo " Usage:"
-    echo " $0  -m <mpicc path> -l <libfabric path> -i <Install path> -s <Source path> -d <dmtcp path>"
+    echo " $0  -m <mpicc path> -l <libfabric path> -i <Install path> -s <Source path> -d <dmtcp path> -u <fuse3 path>"
     echo " Where:"
     echo " * <mpicc   path> = full path where the mpicc is installed."
     echo " * <libfabric   path> = full path where the libfabric is installed."
@@ -36,12 +36,15 @@ function usage {
 }
 
 LIBFABRIC_PATH=""
+LIBFUSE3_ARGS=""
 ## get arguments
-while getopts "m:f:i:s:d:" opt; do
+while getopts "m:f:u:i:s:d:" opt; do
     case "${opt}" in
           m) MPICC_PATH="-D ENABLE_MPI_SERVER=${OPTARG}"
              ;;
           f) LIBFABRIC_PATH=${OPTARG}
+             ;;
+          u) LIBFUSE3_ARGS=${OPTARG}
              ;;
           i) INSTALL_PATH=${OPTARG}
              ;;
@@ -58,12 +61,6 @@ while getopts "m:f:i:s:d:" opt; do
 done
 
 ## check arguments
-if [ "$MPICC_PATH" == "" ]; then
-   echo " Error:"
-   echo " * Empty MPICC_PATH"
-   usage
-   exit
-fi
 if [ "$INSTALL_PATH" == "" ]; then
    echo " Error:"
    echo " * Empty INSTALL_PATH"
@@ -91,6 +88,7 @@ rm -fr "${INSTALL_PATH}/xpn"
 echo " * XPN: compiling and installing..."
 echo " * XPN mpi: $MPICC_PATH"
 echo " * XPN libfabric: $LIBFABRIC_PATH"
+echo " * XPN libfuse: $LIBFUSE3_ARGS"
 pushd .
 cd "$SRC_PATH"
 # rm -r build
@@ -103,7 +101,7 @@ then
    GENERATOR="Ninja"
 fi
 
-cmake -S .. -B . -D BUILD_TESTS=ON -D CMAKE_INSTALL_PREFIX="${INSTALL_PATH}/xpn" $MPICC_PATH -D ENABLE_FABRIC_SERVER="${LIBFABRIC_PATH}" -G "${GENERATOR}" $DMTCP_PATH
+cmake -S .. -B . -D CMAKE_EXPORT_COMPILE_COMMANDS=1 -D BUILD_TESTS=ON -D CMAKE_INSTALL_PREFIX="${INSTALL_PATH}/xpn" $MPICC_PATH -D ENABLE_FABRIC_SERVER="${LIBFABRIC_PATH}" -G "${GENERATOR}" $DMTCP_PATH $LIBFUSE3_ARGS
 
 cmake --build . -j "$(nproc)"
 
