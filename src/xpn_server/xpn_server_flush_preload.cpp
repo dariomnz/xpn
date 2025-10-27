@@ -30,24 +30,33 @@
 
 #include "base_cpp/filesystem.hpp"
 #include "base_cpp/timer.hpp"
-#include "lfi_coll.h"
 #include "xpn/xpn_file.hpp"
 #include "xpn/xpn_metadata.hpp"
 #include "xpn/xpn_partition.hpp"
 #include "xpn_server.hpp"
+#include "xpn_server/xpn_server_ops.hpp"
+
+#ifdef ENABLE_FABRIC_SERVER
+#include "lfi_coll.h"
+#endif
+
 namespace XPN {
 
+#ifdef ENABLE_FABRIC_SERVER
 lfi_group group;
+#endif
 char src_path[PATH_MAX + 5];
 char dest_path[PATH_MAX + 5];
 
 int xpn_path_len = 0;
 
-int flush_copy(const char *entry, int is_file, const char *dir_name, const char *dest_prefix, int blocksize,
-               int replication_level, int rank, int size) {
+int flush_copy([[maybe_unused]] const char *entry, [[maybe_unused]] int is_file, [[maybe_unused]] const char *dir_name,
+               [[maybe_unused]] const char *dest_prefix, [[maybe_unused]] int blocksize,
+               [[maybe_unused]] int replication_level, [[maybe_unused]] int rank, [[maybe_unused]] int size) {
     debug_info("BEGIN entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix "
                               << dest_prefix << " blocksize " << blocksize << " replication_level " << replication_level
                               << " rank " << rank << " size " << size);
+#ifdef ENABLE_FABRIC_SERVER
     int ret;
 
     int fd_src, fd_dest, replication = 0;
@@ -74,12 +83,12 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
     sprintf(dest_path, "%s/%s", dest_prefix, aux_entry);
 
     if (rank == 0) {
-        debug_info(src_path << " -> " << dest_path);
+        print("flush: " << src_path << " -> " << dest_path);
     }
 
     ret = stat(src_path, &st_src);
     if (ret < 0 && errno != ENOENT) {
-        print_error("stat: "<<src_path);
+        print_error("stat: " << src_path);
         free(buf);
         return -1;
     }
@@ -87,7 +96,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         if (rank == 0) {
             ret = mkdir(dest_path, st_src.st_mode);
             if (ret < 0 && errno != EEXIST) {
-                print_error("mkdir: "<<dest_path);
+                print_error("mkdir: " << dest_path);
                 free(buf);
                 return -1;
             }
@@ -103,7 +112,7 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         if (rank == master_node) {
             fd_dest = creat(dest_path, st_src.st_mode);
             if (fd_dest < 0) {
-                print_error("creat 1: "<<dest_path);
+                print_error("creat 1: " << dest_path);
                 printf("creat: %s mode %d\n", dest_path, st_src.st_mode);
             } else {
                 close(fd_dest);
@@ -116,16 +125,14 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
         }
         fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
         if (fd_src < 0 && errno != ENOENT) {
-            print_error("open 1: "<<src_path);
-            printf("open 1: %s\n", src_path);
+            print_error("open 1: " << src_path);
             free(buf);
             return -1;
         }
         lfi_barrier(&group);
         fd_dest = open64(dest_path, O_WRONLY | O_LARGEFILE);
         if (fd_dest < 0) {
-            print_error("open 2: "<<dest_path);
-            printf("open 2: %s\n", dest_path);
+            print_error("open 2: " << dest_path);
             free(buf);
             return -1;
         }
@@ -219,14 +226,17 @@ int flush_copy(const char *entry, int is_file, const char *dir_name, const char 
     debug_info("END entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix "
                             << dest_prefix << " blocksize " << blocksize << " replication_level " << replication_level
                             << " rank " << rank << " size " << size);
+#endif
     return 0;
 }
 
-int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int replication_level, int rank,
-               int size) {
+int flush_list([[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
+               [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
+               [[maybe_unused]] int size) {
     debug_info("BEGIN dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
                                  << " replication_level " << replication_level << " rank " << rank << " size " << size);
 
+#ifdef ENABLE_FABRIC_SERVER
     int ret;
     DIR *dir = NULL;
     struct stat stat_buf;
@@ -243,7 +253,7 @@ int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int
     if (rank == master_node) {
         dir = opendir(dir_name);
         if (dir == NULL) {
-            print_error("opendir: "<<dir_name);
+            print_error("opendir: " << dir_name);
             return -1;
         }
         struct dirent *entry;
@@ -265,7 +275,7 @@ int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int
 
             ret = stat(path, &stat_buf);
             if (ret < 0) {
-                print_error("stat: "<<path);
+                print_error("stat: " << path);
                 printf("%s\n", path);
                 entry = readdir(dir);
                 continue;
@@ -307,23 +317,26 @@ int flush_list(const char *dir_name, const char *dest_prefix, int blocksize, int
 
     debug_info("END dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
                                << " replication_level " << replication_level << " rank " << rank << " size " << size);
+#endif
     return 0;
 }
 
-void xpn_server::op_flush(xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id,
-                          int tag_client_id) {
+void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_server_flush_preload_ckpt &head,
+                          int rank_client_id, int tag_client_id) {
     XPN_PROFILE_FUNCTION();
     struct st_xpn_server_status status = {};
-    int ret;
 
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] >> Begin");
 
     // TODO: only support fabric
     if (m_params.srv_type != server_type::FABRIC) {
+        status.ret = -1;
         comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
         return;
     }
 
+#ifdef ENABLE_FABRIC_SERVER
+    int ret;
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] flush(" << head.paths.path1() << ", "
                           << head.paths.path2() << ")");
 
@@ -362,13 +375,17 @@ void xpn_server::op_flush(xpn_server_comm &comm, const st_xpn_server_flush_prelo
     comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
 
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] << End");
+#endif
 }
 
-int preload_copy(const char *entry, int is_file, const char *dir_name, const char *dest_prefix, int blocksize,
-                 int replication_level, int rank, int size) {
+int preload_copy([[maybe_unused]] const char *entry, [[maybe_unused]] int is_file,
+                 [[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
+                 [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
+                 [[maybe_unused]] int size) {
     debug_info("entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix " << dest_prefix
                         << " blocksize " << blocksize << " replication_level " << replication_level << " rank " << rank
                         << " size " << size);
+#ifdef ENABLE_FABRIC_SERVER
     int ret;
 
     int fd_src, fd_dest;
@@ -399,33 +416,33 @@ int preload_copy(const char *entry, int is_file, const char *dir_name, const cha
     sprintf(dest_path, "%s/%s", dest_prefix, aux_entry);
 
     if (rank == 0) {
-        printf("%s -> %s\n", src_path, dest_path);
+        print("preload: " << src_path << " -> " << dest_path);
     }
 
     ret = stat(src_path, &st);
     if (ret < 0) {
-        print_error("stat: "<<src_path);
+        print_error("stat: " << src_path);
         free(buf);
         return -1;
     }
     if (!is_file) {
         ret = mkdir(dest_path, st.st_mode);
         if (ret < 0 && errno != EEXIST) {
-            print_error("mkdir: "<<dest_path);
+            print_error("mkdir: " << dest_path);
             free(buf);
             return -1;
         }
     } else if (is_file) {
         fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
         if (fd_src < 0) {
-            print_error("open 1: "<<src_path);
+            print_error("open 1: " << src_path);
             free(buf);
             return -1;
         }
 
         fd_dest = open64(dest_path, O_CREAT | O_WRONLY | O_TRUNC | O_LARGEFILE, st.st_mode);
         if (fd_dest < 0) {
-            print_error("open 2: "<<dest_path);
+            print_error("open 2: " << dest_path);
             free(buf);
             return -1;
         }
@@ -521,11 +538,16 @@ int preload_copy(const char *entry, int is_file, const char *dir_name, const cha
     }
 
     free(buf);
+#endif
     return 0;
 }
 
-int preload_list(const char *dir_name, const char *dest_prefix, int blocksize, int replication_level, int rank,
-                 int size) {
+int preload_list([[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
+                 [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
+                 [[maybe_unused]] int size) {
+    debug_info("BEGIN dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
+                                 << " replication_level " << replication_level << " rank " << rank << " size " << size);
+#ifdef ENABLE_FABRIC_SERVER
     int ret;
     DIR *dir = NULL;
     struct stat stat_buf;
@@ -555,7 +577,7 @@ int preload_list(const char *dir_name, const char *dest_prefix, int blocksize, i
 
         ret = stat(path, &stat_buf);
         if (ret < 0) {
-            print_error("stat: "<<path);
+            print_error("stat: " << path);
             printf("%s\n", path);
             entry = readdir(dir);
             continue;
@@ -574,24 +596,26 @@ int preload_list(const char *dir_name, const char *dest_prefix, int blocksize, i
     }
 
     closedir(dir);
-
+#endif
     return 0;
 }
 
-void xpn_server::op_preload(xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id,
-                            int tag_client_id) {
+void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_server_flush_preload_ckpt &head,
+                            int rank_client_id, int tag_client_id) {
     XPN_PROFILE_FUNCTION();
     struct st_xpn_server_status status = {};
-    int ret;
 
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_preload] >> Begin");
 
     // TODO: only support fabric
     if (m_params.srv_type != server_type::FABRIC) {
+        status.ret = -1;
         comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
         return;
     }
 
+#ifdef ENABLE_FABRIC_SERVER
+    int ret;
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_preload] flush(" << head.paths.path1() << ", "
                           << head.paths.path2() << ")");
 
@@ -631,6 +655,7 @@ void xpn_server::op_preload(xpn_server_comm &comm, const st_xpn_server_flush_pre
     comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
 
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_preload] << End");
+#endif
 }
 
 }  // namespace XPN
