@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -56,6 +57,7 @@ class Defer {
     bool m_should_run_cleanup = true;
 };
 
+extern char** environ;
 class setup {
    public:
     static void env(const std::unordered_map<std::string, std::string>& envs) {
@@ -64,6 +66,15 @@ class setup {
                 std::cerr << "Error setting enviroment '" << k << "' to '" << v << "'" << std::endl;
                 std::exit(EXIT_FAILURE);
             }
+        }
+    }
+
+    static void print_env() {
+        char** env_ptr = environ;
+
+        while (*env_ptr != nullptr) {
+            std::cout << *env_ptr << std::endl;
+            env_ptr++;
         }
     }
 
@@ -119,7 +130,14 @@ class setup {
                 std::cerr << "Error: cannot parse server url: '" << srv_url << "'" << std::endl;
                 exit(EXIT_FAILURE);
             }
-            if (protocol != XPN::server_protocols::sck_server) {
+            std::string server_type;
+            if (protocol == XPN::server_protocols::sck_server) {
+                server_type = "sck";
+            } else if (protocol == XPN::server_protocols::fabric_server) {
+                server_type = "fabric";
+            } else if (protocol == XPN::server_protocols::mpi_server) {
+                server_type = "mpi";
+            } else {
                 std::cerr << "Unsupported protocol to start a server in test " << protocol << std::endl;
                 exit(EXIT_FAILURE);
             }
@@ -128,7 +146,7 @@ class setup {
                 std::cerr << "Unsupported server ip to start a server in test " << server << std::endl;
                 exit(EXIT_FAILURE);
             }
-            std::string srv_commmand = "xpn_server -t pool -s sck";
+            std::string srv_commmand = "xpn_server -t pool -s " + server_type;
             if (!port.empty()) {
                 srv_commmand += " --port " + port;
             }
@@ -143,6 +161,21 @@ class setup {
                 srv_p.wait_status();
             }
         });
+    }
+
+    static std::string generate_random_string(size_t length) {
+        const std::string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        std::string result;
+        result.reserve(length);
+
+        std::random_device rd;
+        std::mt19937 generator(rd());
+        std::uniform_int_distribution<size_t> distribution(0, characters.length() - 1);
+
+        for (size_t i = 0; i < length; ++i) {
+            result += characters[distribution(generator)];
+        }
+        return result;
     }
 };
 

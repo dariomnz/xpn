@@ -115,7 +115,7 @@ nfi_mpi_server_control_comm::~nfi_mpi_server_control_comm() {
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_destroy] << End");
 }
 
-nfi_xpn_server_comm* nfi_mpi_server_control_comm::control_connect(const std::string &srv_name, int srv_port) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::control_connect(const std::string &srv_name, int srv_port) {
     XPN_PROFILE_FUNCTION();
     int ret, err;
     int connection_socket;
@@ -171,7 +171,7 @@ nfi_xpn_server_comm* nfi_mpi_server_control_comm::control_connect(const std::str
     return connect(srv_name, port_name);
 }
 
-nfi_xpn_server_comm* nfi_mpi_server_control_comm::connect([[maybe_unused]] const std::string &srv_name, const std::string &port_name) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::connect([[maybe_unused]] const std::string &srv_name, const std::string &port_name) {
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_connect] Connect port "<<port_name);
     int ret;
     MPI_Comm out_comm;
@@ -207,14 +207,14 @@ nfi_xpn_server_comm* nfi_mpi_server_control_comm::connect([[maybe_unused]] const
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_connect] << End");
 
     // Return OK
-    return new (std::nothrow) nfi_mpi_server_comm(out_comm, m_rank, m_size);
+    return std::make_unique<nfi_mpi_server_comm>(out_comm, m_rank, m_size);
 }
 
-void nfi_mpi_server_control_comm::disconnect(nfi_xpn_server_comm *comm, bool needSendCode) {
+void nfi_mpi_server_control_comm::disconnect(std::unique_ptr<nfi_xpn_server_comm> &comm, bool needSendCode) {
     XPN_PROFILE_FUNCTION();
     int ret;
 
-    nfi_mpi_server_comm *in_comm = static_cast<nfi_mpi_server_comm*>(comm);
+    nfi_mpi_server_comm *in_comm = static_cast<nfi_mpi_server_comm*>(comm.get());
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_disconnect] >> Begin");
 
     int rank;
@@ -240,7 +240,7 @@ void nfi_mpi_server_control_comm::disconnect(nfi_xpn_server_comm *comm, bool nee
         printf("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_disconnect] ERROR: MPI_Comm_disconnect fails");
     }
 
-    delete comm;
+    comm.reset();
 
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_disconnect] << End");
 }

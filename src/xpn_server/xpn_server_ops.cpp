@@ -40,10 +40,10 @@ namespace XPN
 
 #define HANDLE_OPERATION(op_struct, op_function) \
   const op_struct* msg_struct = reinterpret_cast<const op_struct*>(msg.msg_buffer); \
-  (op_function)(*(comm), (*msg_struct), (rank), (tag));
+  (op_function)(comm, (*msg_struct), (rank), (tag));
 
 //Read the operation to realize
-void xpn_server::do_operation ( xpn_server_comm *comm, const xpn_server_msg& msg, int rank, int tag, timer timer )
+void xpn_server::do_operation ( xpn_server_comm &comm, const xpn_server_msg& msg, int rank, int tag, timer timer )
 {
   debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER_OPS] [xpn_server_do_operation] >> Begin");
   xpn_server_ops type_op = static_cast<xpn_server_ops>(msg.op);
@@ -84,8 +84,9 @@ void xpn_server::do_operation ( xpn_server_comm *comm, const xpn_server_msg& msg
     case xpn_server_ops::STATVFS_DIR:            {HANDLE_OPERATION(st_xpn_server_path,                   op_statvfs);               break;}
 
     // Flush preload
-    case xpn_server_ops::FLUSH:                  {HANDLE_OPERATION(st_xpn_server_flush_preload,          op_flush);                 break;}
-    case xpn_server_ops::PRELOAD:                {HANDLE_OPERATION(st_xpn_server_flush_preload,          op_preload);               break;}
+    case xpn_server_ops::FLUSH:                  {HANDLE_OPERATION(st_xpn_server_flush_preload_ckpt,     op_flush);                 break;}
+    case xpn_server_ops::PRELOAD:                {HANDLE_OPERATION(st_xpn_server_flush_preload_ckpt,     op_preload);               break;}
+    case xpn_server_ops::CHECKPOINT:             {HANDLE_OPERATION(st_xpn_server_flush_preload_ckpt,     op_checkpoint);            break;}
     //Connection API
     case xpn_server_ops::DISCONNECT: break;
     //Rest operation are unknown

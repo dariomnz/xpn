@@ -26,7 +26,7 @@
 namespace XPN
 {
     // Fordward declaration
-    class xpn_fh;
+    struct xpn_fh;
     class xpn_metadata;
 
     class nfi_xpn_server : public nfi_server
@@ -54,6 +54,7 @@ namespace XPN
         int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) override;
         int nfi_flush       (const char *path) override;
         int nfi_preload     (const char *path) override;
+        int nfi_checkpoint  (const char *path) override;
         int nfi_response    () override;
     };
 } // namespace XPN

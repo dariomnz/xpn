@@ -527,8 +527,8 @@ int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::dat
     PROXY(close)(fd); //TODO: think if necesary check error in close
   }
 
-  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
-  debug_info("[Server=%s] [NFI_LOCAL] [nfi_local_write_mdata] << End");
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")="<<ret);
+  debug_info("[Server="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] << End");
   return ret;
 }
 
@@ -539,7 +539,7 @@ int nfi_local::nfi_flush (const char *path)
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_flush] >> Begin");
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")");
 
-  st_xpn_server_flush_preload msg;
+  st_xpn_server_flush_preload_ckpt msg;
     
   std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
   msg.paths.path1()[length] = '\0';
@@ -563,7 +563,7 @@ int nfi_local::nfi_preload (const char *path)
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] >> Begin");
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")");
 
-  st_xpn_server_flush_preload msg;
+  st_xpn_server_flush_preload_ckpt msg;
   
   size_t length = strlen(path);
   strcpy(msg.paths.path1(), path);
@@ -578,6 +578,30 @@ int nfi_local::nfi_preload (const char *path)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")="<<ret);
   debug_info("[NFI_LOCAL] [nfi_preload] >> End");
+  return ret;
+}
+
+int nfi_local::nfi_checkpoint (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_checkpoint] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_checkpoint] nfi_checkpoint("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload_ckpt msg;
+    
+  std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = strlen(path);
+  strcpy(msg.paths.path2(), path);
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::CHECKPOINT, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_checkpoint] nfi_checkpoint("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_LOCAL] [nfi_checkpoint] >> End");
   return ret;
 }
 

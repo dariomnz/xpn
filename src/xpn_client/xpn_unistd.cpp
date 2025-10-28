@@ -30,6 +30,19 @@
 
 extern "C" {
 
+int xpn_initialized ( void )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_init] >> Begin");
+
+  ret = XPN::xpn_api::get_instance().initialized();
+
+  debug_info("[XPN_UNISTD] [xpn_init] >> End");
+
+  return ret;
+}
+
 int xpn_init ( void )
 {
   int ret = -1;
@@ -116,6 +129,21 @@ int xpn_preload ( const char * path )
   XPN_API_UNLOCK();
 
   debug_info("[XPN_UNISTD] [xpn_preload] >> End");
+
+  return ret;
+}
+
+int xpn_checkpoint ( const char * path )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_checkpoint] >> Begin");
+
+  XPN_API_LOCK();
+  ret = XPN::xpn_api::get_instance().checkpoint(path);
+  XPN_API_UNLOCK();
+
+  debug_info("[XPN_UNISTD] [xpn_checkpoint] >> End");
 
   return ret;
 }
@@ -433,6 +461,36 @@ int xpn_rename ( const char *path, const char *newpath )
   XPN_API_UNLOCK();
 
   debug_info("[XPN_UNISTD] [xpn_rename] >> End");
+
+  return ret;
+}
+
+int xpn_transfer_xpn2fs ( const char *path, const char *newpath )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_transfer_xpn2fs] >> Begin");
+
+  XPN_API_LOCK();
+  ret = XPN::xpn_api::get_instance().transfer_xpn2fs(path, newpath);
+  XPN_API_UNLOCK();
+
+  debug_info("[XPN_UNISTD] [xpn_transfer_xpn2fs] >> End");
+
+  return ret;
+}
+
+int xpn_transfer_fs2xpn ( const char *path, const char *newpath )
+{
+  int ret = -1;
+
+  debug_info("[XPN_UNISTD] [xpn_transfer_fs2xpn] >> Begin");
+
+  XPN_API_LOCK();
+  ret = XPN::xpn_api::get_instance().transfer_fs2xpn(path, newpath);
+  XPN_API_UNLOCK();
+
+  debug_info("[XPN_UNISTD] [xpn_transfer_fs2xpn] >> End");
 
   return ret;
 }

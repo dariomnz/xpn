@@ -43,4 +43,5 @@ namespace XPN
     }
 
     void workers_sequential::wait_all() {}
+    uint32_t workers_sequential::size() const { return 1; }
 } // namespace XPN

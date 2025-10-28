@@ -22,13 +22,16 @@
 #include "base_cpp/debug.hpp"
 #include "xpn/xpn_api.hpp"
 
+#include <fcntl.h>
+
 #include <iostream>
 
 namespace XPN
 {
-    std::string xpn_api::check_remove_part_from_path(const std::string &path, std::string& out_path)
+    std::string xpn_api::check_remove_part_from_path(const std::string& path, std::string& out_path)
     {
-        std::string name_part = xpn_path::get_first_dir(path);
+        std::string_view name_part_sv = xpn_path::get_first_dir(path);
+        std::string name_part(name_part_sv);
         // XPN_DEBUG("First dir "<<name_part);
         auto it = m_partitions.find(name_part);
         if (it == m_partitions.end())
@@ -107,7 +110,7 @@ namespace XPN
             int master_file = file->m_mdata.master_file();
             std::future<int> fut;
             if ((O_DIRECTORY == (flags & O_DIRECTORY))){
-                fut = m_worker->launch([&file, master_file, flags, mode](){
+                fut = m_worker->launch([&file, master_file](){
                     return file->m_part.m_data_serv[master_file]->nfi_opendir(file->m_path, file->m_data_vfh[master_file]);
                 });
             }else{
@@ -158,28 +161,28 @@ namespace XPN
             return -1;
         }
 
-        std::vector<std::future<int>> v_res(file->m_data_vfh.size());
-        for (uint64_t i = 0; i < file->m_data_vfh.size(); i++)
-        {
-            if (file->m_data_vfh[i].fd != -1)
-            {
-                v_res[i] = m_worker->launch([i, &file](){
-                    return file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]);
-                });
+        if (file->m_links == 0) {
+            std::vector<std::future<int>> v_res(file->m_data_vfh.size());
+            for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
+                if (file->m_data_vfh[i].fd != -1) {
+                    v_res[i] = m_worker->launch([i, &file]() { 
+                        return file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]); 
+                    });
+                }
             }
+
+            int aux_res;
+            for (auto &fut : v_res) {
+                if (!fut.valid()) continue;
+                aux_res = fut.get();
+                if (aux_res < 0) {
+                    res = aux_res;
+                }
+            }
+        } else {
+            file->m_links--;
         }
 
-        int aux_res;
-        for (auto &fut : v_res)
-        {   
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
-            if (aux_res < 0)
-            {
-                res = aux_res;
-            }
-        }
-        
         m_file_table.remove(fd);
 
         XPN_DEBUG_END_CUSTOM(fd);
@@ -211,7 +214,7 @@ namespace XPN
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (file.exist_in_serv(i)){
-                v_res[i] = m_worker->launch([i, &v_res, &file](){
+                v_res[i] = m_worker->launch([i, &file](){
                     // Always wait and not async because it can fail in other ways
                     return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
                     // v_res[i] = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
@@ -274,7 +277,7 @@ namespace XPN
             if (file.exist_in_serv(i)){
                 if (!new_file.exist_in_serv(i)){
                     XPN_DEBUG("Remove in server "<<i);
-                    v_res[i] = m_worker->launch([i, &file, &new_file](){
+                    v_res[i] = m_worker->launch([i, &file](){
                         return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
                     });
                 }else{
@@ -299,6 +302,122 @@ namespace XPN
         if (res >= 0){
             new_file.m_mdata.m_data = file.m_mdata.m_data;
             res = write_metadata(new_file.m_mdata, false);
+        }
+
+        XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+        return res;
+    }
+    
+    int xpn_api::transfer_xpn2fs(const char *path, const char *newpath)
+    {
+        XPN_DEBUG_BEGIN_CUSTOM(path<<", "<<newpath);
+        int res = 0;
+
+        int fd1 = open(path, O_RDONLY, 0);
+        if (fd1 < 0){
+            res = fd1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+        struct stat st = {};
+        if (stat(path, &st) < 0) {
+            res = -1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+        
+        int fd2 = ::open(newpath, O_WRONLY | O_CREAT | O_TRUNC, st.st_mode);
+        if (fd2 < 0){
+            res = fd2;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+
+        int64_t file_size = st.st_size;
+        int64_t current_offset = 0;
+        std::vector<uint8_t> buffer(MAX_BUFFER_SIZE, 0);
+        while (file_size > 0) {
+            int64_t read_size = pread(fd1, buffer.data(), buffer.size(), current_offset);
+            if (read_size < 0) {
+                res = -1;
+                XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+                return res;
+            }
+            int64_t write_size = filesystem::pwrite(fd2, buffer.data(), read_size, current_offset);
+            if (read_size < 0) {
+                res = -1;
+                XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+                return res;
+            }
+            file_size -= write_size;
+            current_offset -= write_size;
+        }
+
+        int ret0 = unlink(path);
+        int ret1 = close(fd1);
+        int ret2 = ::close(fd2);
+        if (ret0 < 0 || ret1 < 0 || ret2 < 0) {
+            res = -1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+
+        XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+        return res;
+    }
+
+    int xpn_api::transfer_fs2xpn(const char *path, const char *newpath)
+    {
+        XPN_DEBUG_BEGIN_CUSTOM(path<<", "<<newpath);
+        int res = 0;
+
+        int fd1 = ::open(path, O_RDONLY, 0);
+        if (fd1 < 0){
+            res = fd1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+        struct stat st = {};
+        if (::stat(path, &st) < 0) {
+            res = -1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+        
+        int fd2 = open(newpath, O_WRONLY | O_CREAT | O_TRUNC, st.st_mode);
+        if (fd2 < 0){
+            res = fd2;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
+        }
+
+        int64_t file_size = st.st_size;
+        int64_t current_offset = 0;
+        std::vector<uint8_t> buffer(MAX_BUFFER_SIZE, 0);
+        while (file_size > 0) {
+            int64_t read_size = filesystem::pread(fd1, buffer.data(), buffer.size(), current_offset);
+            if (read_size < 0) {
+                res = -1;
+                XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+                return res;
+            }
+            int64_t write_size = pwrite(fd2, buffer.data(), read_size, current_offset);
+            if (read_size < 0) {
+                res = -1;
+                XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+                return res;
+            }
+            file_size -= write_size;
+            current_offset -= write_size;
+        }
+
+        int ret0 = ::unlink(path);
+        int ret1 = ::close(fd1);
+        int ret2 = close(fd2);
+        if (ret0 < 0 || ret1 < 0 || ret2 < 0) {
+            res = -1;
+            XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
+            return res;
         }
 
         XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);

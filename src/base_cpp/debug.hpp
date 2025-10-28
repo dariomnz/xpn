@@ -28,6 +28,7 @@
 #include <sstream>
 #include <string>
 
+#include "allocator.hpp"
 #include "profiler.hpp"
 #include "xpn_env.hpp"
 
@@ -43,7 +44,7 @@ constexpr const char *file_name(const char *path) {
 }
 
 struct get_time_stamp {
-    friend std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const get_time_stamp &time_stamp);
+    friend std::ostream &operator<<(std::ostream &os, const get_time_stamp &time_stamp);
 };
 
 struct format_open_flags {
@@ -61,7 +62,7 @@ struct format_open_mode {
 struct print_errno {
     ssize_t res;
     print_errno(ssize_t res) : res(res) {}
-    friend std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const print_errno &pe) {
+    friend std::ostream &operator<<(std::ostream &os, const print_errno &pe) {
         if (pe.res < 0) {
             os << " errno=" << errno << " " << std::strerror(errno);
         }
@@ -69,29 +70,40 @@ struct print_errno {
     }
 };
 
-#define XPN_DEBUG_COMMON_HEADER                                                                                \
-    {                                                                                                          \
-        std::ostringstream out;                                                                                \
-        out << "[" << get_time_stamp() << "] [" << __func__ << "] [" << file_name(__FILE__) << ":" << __LINE__ \
-            << "] ";                                                                                           \
-        fprintf(stderr, out.str().c_str());                                                                    \
+static constexpr int SSTREAM_BUFFER_SIZE = 4096;
+
+#define XPN_DEBUG_COMMON_HEADER                                                                                  \
+    {                                                                                                            \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                    \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                      \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                                                   \
+        out << "[" << ::XPN::get_time_stamp() << "] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" \
+            << __LINE__ << "] ";                                                                                 \
+        ::fprintf(stderr, "%s", sstream_buffer);                                                                 \
+        ::fflush(stderr);                                                                                        \
     }
 
 #ifdef DEBUG
-#define XPN_DEBUG(out_format)               \
-    {                                       \
-        XPN_DEBUG_COMMON_HEADER             \
-        std::ostringstream out;             \
-        out << out_format << std::endl;     \
-        fprintf(stderr, out.str().c_str()); \
+#define XPN_DEBUG(out_format)                                                               \
+    {                                                                                       \
+        XPN_DEBUG_COMMON_HEADER                                                             \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                               \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE}; \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                              \
+        out << out_format << std::endl;                                                     \
+        ::fprintf(stderr, "%s", sstream_buffer);                                            \
+        ::fflush(stderr);                                                                   \
     }
 #else
-#define XPN_DEBUG(out_format)                \
-    if (xpn_env::get_instance().xpn_debug) { \
-        XPN_DEBUG_COMMON_HEADER              \
-        std::ostringstream out;              \
-        out << out_format << std::endl;      \
-        fprintf(stderr, out.str().c_str());  \
+#define XPN_DEBUG(out_format)                                                               \
+    if (::XPN::xpn_env::get_instance().xpn_debug) {                                         \
+        XPN_DEBUG_COMMON_HEADER                                                             \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                               \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE}; \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                              \
+        out << out_format << std::endl;                                                     \
+        ::fprintf(stderr, "%s", sstream_buffer);                                            \
+        ::fflush(stderr);                                                                   \
     }
 #endif
 
@@ -108,29 +120,45 @@ struct print_errno {
 #ifdef DEBUG
 #define debug_error(out_format)                                                                                        \
     {                                                                                                                  \
-        std::ostringstream out;                                                                                        \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                          \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                            \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                                                         \
         out << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                              \
-        fprintf(stderr, out.str().c_str());                                                                            \
+        ::fprintf(stderr, "%s", sstream_buffer);                                                                       \
+        ::fflush(stderr);                                                                                              \
     }
 #define debug_warning(out_format)                                                                          \
     {                                                                                                      \
-        std::ostringstream out;                                                                            \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                              \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                                             \
         out << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
             << out_format << std::endl;                                                                    \
-        fprintf(stderr, out.str().c_str());                                                                \
+        ::fprintf(stderr, "%s", sstream_buffer);                                                           \
+        ::fflush(stderr);                                                                                  \
     }
 #define debug_info(out_format)                                                                                        \
     {                                                                                                                 \
-        std::ostringstream out;                                                                                       \
+        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                         \
+        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                           \
+        auto out = ::XPN::make_stack_ostringstream(&resource);                                                        \
         out << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                             \
-        fprintf(stderr, out.str().c_str());                                                                           \
+        ::fprintf(stderr, "%s", sstream_buffer);                                                                      \
+        ::fflush(stderr);                                                                                             \
+    }
+#define debug_info_fmt(...)                 \
+    {                                          \
+        char buff[::XPN::SSTREAM_BUFFER_SIZE]; \
+        ::sprintf(buff, __VA_ARGS__);          \
+        debug_info(buff);                      \
     }
 #else
 #define debug_error(out_format)
 #define debug_warning(out_format)
 #define debug_info(out_format)
+#define debug_info_fmt(...)
 #endif
 
 #define print(out_format) std::cout << out_format << std::endl;

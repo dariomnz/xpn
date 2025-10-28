@@ -1,6 +1,6 @@
 add_executable(fuse-xpn "fuse-xpn.cpp")
 
-target_link_libraries(fuse-xpn PRIVATE xpn fuse3)
+target_link_libraries(fuse-xpn PRIVATE xpn "${FUSE_LIBRARY}")
 
 target_link_directories(fuse-xpn PRIVATE "${FUSE_LIBRARY}")
 

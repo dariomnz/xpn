@@ -126,7 +126,7 @@ mpi_server_control_comm::~mpi_server_control_comm()
 }
 
 // accept, disconnect
-xpn_server_comm* mpi_server_control_comm::accept ( int socket, bool sendData )
+std::shared_ptr<xpn_server_comm> mpi_server_control_comm::accept ( int socket, bool sendData )
 {
   XPN_PROFILE_FUNCTION();
   int ret;
@@ -155,15 +155,15 @@ xpn_server_comm* mpi_server_control_comm::accept ( int socket, bool sendData )
 
   debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_accept] << End");
   
-  return new (std::nothrow) mpi_server_comm(comm);
+  return std::make_shared<mpi_server_comm>(comm);
 }
 
-void mpi_server_control_comm::disconnect ( xpn_server_comm *comm )
+void mpi_server_control_comm::disconnect ( std::shared_ptr<xpn_server_comm> comm )
 {
   XPN_PROFILE_FUNCTION();
   int ret;
 
-  mpi_server_comm *in_comm = static_cast<mpi_server_comm*>(comm);
+  mpi_server_comm *in_comm = static_cast<mpi_server_comm*>(comm.get());
 
   debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_disconnect] >> Begin");
 
@@ -183,11 +183,10 @@ void mpi_server_control_comm::disconnect ( xpn_server_comm *comm )
     return;
   }
 
-  delete comm;
   debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_disconnect] << End");
 }
 
-xpn_server_comm* mpi_server_control_comm::create([[maybe_unused]] int rank_client_id) {
+std::shared_ptr<xpn_server_comm> mpi_server_control_comm::create([[maybe_unused]] int rank_client_id) {
   unreachable("unsupported");
 }
 

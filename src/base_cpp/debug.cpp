@@ -28,10 +28,17 @@ namespace XPN {
 std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const get_time_stamp &time_stamp) {
     auto now = std::chrono::high_resolution_clock::now();
     std::time_t actual_time = std::chrono::high_resolution_clock::to_time_t(now);
-    std::tm formated_time = *std::localtime(&actual_time);
+    std::tm tm = {};
+    ::localtime_r(&actual_time, &tm);
     auto millisec = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    return os << std::put_time(&formated_time, "%Y-%m-%d %H:%M:%S") << "." << std::setw(3) << std::setfill('0')
-              << millisec.count();
+    os << tm.tm_year + 1900 << "-";
+    os << tm.tm_mon << "-";
+    os << tm.tm_mday << " ";
+    os << tm.tm_hour << ":";
+    os << tm.tm_min << ":";
+    os << tm.tm_sec << ".";
+    os << std::setw(3) << std::setfill('0') << millisec.count();
+    return os;
 }
 
 std::ostream &operator<<(std::ostream &os, const format_open_flags &open_flags) {

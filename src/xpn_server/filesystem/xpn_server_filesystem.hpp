@@ -37,6 +37,7 @@ enum class filesystem_mode {
 class xpn_server_filesystem {
    public:
     static std::unique_ptr<xpn_server_filesystem> Create(filesystem_mode mode);
+    filesystem_mode m_mode;
 
    public:
     xpn_server_filesystem() = default;

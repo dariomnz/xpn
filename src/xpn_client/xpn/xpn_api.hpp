@@ -81,7 +81,7 @@ namespace XPN
         xpn_api(xpn_api&&) = delete;
         // Delete move assignment operator
         xpn_api& operator=(xpn_api&&) = delete;
-        std::string check_remove_part_from_path(const std::string &path, std::string& out_path);
+        std::string check_remove_part_from_path(const std::string &path, std::string &out_path);
     public:
         static xpn_api& get_instance()
         {
@@ -103,12 +103,14 @@ namespace XPN
 
     public:
         // XPN api
+        int initialized();
         int init();
         int destroy();
         int print_partitions();
         int clean_connections();
 
         int flush_preload(const char * path, bool isFlush);
+        int checkpoint(const char * path);
 
         int mark_error_server(int index);
         int get_block_locality(char *path, int64_t offset, int *url_c, char **url_v[]);
@@ -124,6 +126,8 @@ namespace XPN
         int   close     (int fd);
         int   unlink    (const char *path);
         int   rename    (const char *path, const char *newpath);
+        int   transfer_xpn2fs    (const char *path, const char *newpath);
+        int   transfer_fs2xpn    (const char *path, const char *newpath);
         int   dup       (int fd);
         int   dup2      (int fd, int fd2);
 

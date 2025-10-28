@@ -33,7 +33,7 @@
 
 namespace XPN {
 
-nfi_xpn_server_comm* nfi_sck_server_control_comm::control_connect ( const std::string &srv_name, int srv_port )
+std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connect ( const std::string &srv_name, int srv_port )
 {
   int ret;
   int connection_socket;
@@ -80,7 +80,7 @@ nfi_xpn_server_comm* nfi_sck_server_control_comm::control_connect ( const std::s
   return connect(srv_name, port_name);
 }
 
-nfi_xpn_server_comm* nfi_sck_server_control_comm::connect(const std::string &srv_name, const std::string &port_name) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::connect(const std::string &srv_name, const std::string& port_name) {
   int ret, sd;
   // Connect...
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] Connect port "<<port_name);
@@ -102,13 +102,13 @@ nfi_xpn_server_comm* nfi_sck_server_control_comm::connect(const std::string &srv
 
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] << End\n");
 
-  return new (std::nothrow) nfi_sck_server_comm(sd, res_mqtt);
+  return std::make_unique<nfi_sck_server_comm>(sd, res_mqtt);
 }
 
-void nfi_sck_server_control_comm::disconnect(nfi_xpn_server_comm *comm, bool needSendCode) 
+void nfi_sck_server_control_comm::disconnect(std::unique_ptr<nfi_xpn_server_comm> &comm, bool needSendCode) 
 {
   int ret;
-  nfi_sck_server_comm *in_comm = static_cast<nfi_sck_server_comm*>(comm);
+  nfi_sck_server_comm *in_comm = static_cast<nfi_sck_server_comm*>(comm.get());
 
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_disconnect] >> Begin");
 
@@ -137,7 +137,7 @@ void nfi_sck_server_control_comm::disconnect(nfi_xpn_server_comm *comm, bool nee
     #endif
   }
 
-  delete comm;
+  comm.reset();
 
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_disconnect] << End");
 }

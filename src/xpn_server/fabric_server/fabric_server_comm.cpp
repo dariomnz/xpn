@@ -61,7 +61,7 @@ fabric_server_control_comm::~fabric_server_control_comm()
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [~fabric_server_control_comm] >> End");
 }
 
-xpn_server_comm* fabric_server_control_comm::accept ( int socket, bool sendData )
+std::shared_ptr<xpn_server_comm> fabric_server_control_comm::accept ( int socket, bool sendData )
 {
   XPN_PROFILE_FUNCTION();
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_comm_accept] >> Begin");
@@ -84,27 +84,25 @@ xpn_server_comm* fabric_server_control_comm::accept ( int socket, bool sendData 
 
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_CONTROL_COMM] [fabric_server_control_comm_accept] << End");
 
-  return new (std::nothrow) fabric_server_comm(new_comm);
+  return std::make_shared<fabric_server_comm>(new_comm);
 }
 
-xpn_server_comm* fabric_server_control_comm::create ( int rank_client_id ) {
-  return new (std::nothrow) fabric_server_comm(rank_client_id);
+std::shared_ptr<xpn_server_comm> fabric_server_control_comm::create ( int rank_client_id ) {
+  return std::make_shared<fabric_server_comm>(rank_client_id);
 }
 
 int fabric_server_control_comm::rearm([[maybe_unused]] int rank_client_id) {
   return 0;
 }
 
-void fabric_server_control_comm::disconnect ( xpn_server_comm* comm )
+void fabric_server_control_comm::disconnect ( std::shared_ptr<xpn_server_comm> comm )
 {
   XPN_PROFILE_FUNCTION();
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_comm_disconnect] >> Begin");
   
-  fabric_server_comm *in_comm = static_cast<fabric_server_comm*>(comm);
+  fabric_server_comm *in_comm = static_cast<fabric_server_comm*>(comm.get());
 
   lfi_client_close(in_comm->m_comm);
-
-  delete comm;
 
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_comm_disconnect] << End");
 }
@@ -150,9 +148,11 @@ int64_t fabric_server_control_comm::read_operation ( xpn_server_msg &msg, int &r
     }
   }
 
-  lfi_request *requests[2] = {shm_request.get(), peer_request.get()};
+  constexpr int REQUESTS_SIZE = 2;
+  lfi_request *requests[REQUESTS_SIZE] = {shm_request.get(), peer_request.get()};
 
-  int completed = lfi_wait_any(requests, 2);
+  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] Before lfi_wait_any");
+  int completed = lfi_wait_any(requests, REQUESTS_SIZE);
 
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request shm  (RANK "<<lfi_request_source(shm_request.get())<<", TAG "<<shm_msg.tag<<")");
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request peer (RANK "<<lfi_request_source(peer_request.get())<<", TAG "<<peer_msg.tag<<")");
@@ -161,8 +161,6 @@ int64_t fabric_server_control_comm::read_operation ( xpn_server_msg &msg, int &r
     tag_client_id  = shm_msg.tag;
     ret = lfi_request_size(shm_request.get());
     std::memcpy(&msg, &shm_msg, shm_msg.get_size());
-
-    // shm_msg = {};
 
     // Reuse the request for a new recv
     if (lfi_trecv_async(shm_request.get(), &shm_msg, sizeof(shm_msg), 0) < 0){
@@ -174,8 +172,6 @@ int64_t fabric_server_control_comm::read_operation ( xpn_server_msg &msg, int &r
     tag_client_id  = peer_msg.tag;
     ret = lfi_request_size(peer_request.get());
     std::memcpy(&msg, &peer_msg, peer_msg.get_size());
-
-    // peer_msg = {};
 
     // Reuse the request for a new recv
     if (lfi_trecv_async(peer_request.get(), &peer_msg, sizeof(peer_msg), 0) < 0){

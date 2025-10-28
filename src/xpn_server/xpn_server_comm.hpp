@@ -36,6 +36,8 @@ namespace XPN
     virtual int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) = 0;
     virtual int64_t read_data(void *data, int64_t size, int rank_client_id, int tag_client_id) = 0;
     virtual int64_t write_data(const void *data, int64_t size, int rank_client_id, int tag_client_id) = 0;
+
+    virtual int64_t get_rank() = 0;
   };
 
   class xpn_server_control_comm
@@ -44,11 +46,11 @@ namespace XPN
     xpn_server_control_comm() = default;
     virtual ~xpn_server_control_comm() = default;
 
-    virtual xpn_server_comm* accept(int socket, bool sendData = true) = 0;
-    virtual void disconnect(xpn_server_comm *comm) = 0;
+    virtual std::shared_ptr<xpn_server_comm> accept(int socket, bool sendData = true) = 0;
+    virtual void disconnect(std::shared_ptr<xpn_server_comm> comm) = 0;
 
     // Multiplexing
-    virtual xpn_server_comm* create(int rank_client_id) = 0;
+    virtual std::shared_ptr<xpn_server_comm> create(int rank_client_id) = 0;
     virtual int rearm(int rank_client_id) = 0;
     virtual void disconnect(int rank_client_id) = 0;
     virtual int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) = 0;

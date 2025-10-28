@@ -76,6 +76,7 @@ int xpn_file_table::dup(int fd, int new_fd) {
     if (!file) {
         return -1;
     }
+    file->m_links++;
     if (new_fd != -1) {
         // Like posix dup2 close silently if its open
         if (fd != new_fd && has(new_fd)) {

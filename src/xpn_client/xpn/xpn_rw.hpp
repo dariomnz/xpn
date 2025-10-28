@@ -31,15 +31,15 @@ namespace XPN
     {
     public:
         xpn_rw_buffer(xpn_file &file, int64_t offset, void *buffer, uint64_t size);
-        void calculate_reads();
+        void calculate_reads(bool optimize);
         void join_ops();
         void fix_ops_reads();
-        void calculate_writes();
+        void calculate_writes(bool optimize);
 
         uint64_t num_ops();
         uint64_t size();
 
-        std::string to_string();
+        const char* dump();
         
         struct rw_buffer
         {
@@ -55,7 +55,7 @@ namespace XPN
             char * get_buffer() { return v_buffer.empty() ? buffer : v_buffer.data(); }
             int64_t get_size() { return size; }
 
-            std::string to_string();
+            const char* dump();
         };
         std::vector<std::vector<rw_buffer>> m_ops;
 

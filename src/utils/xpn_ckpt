@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# echo "Program: $@"
+
+SCRIPT_DIR=$(dirname $(readlink -f "$0"))
+# echo "SCRIPT_DIR: ${SCRIPT_DIR}"
+
+XPN_DMTCP_PATH=${SCRIPT_DIR}/../lib/xpn_dmtcp.so
+LFI_DMTCP_PATH=${SCRIPT_DIR}/../lib/lfi_dmtcp.so
+# echo "XPN_DMTCP_PATH: ${XPN_DMTCP_PATH}"
+# echo "LFI_DMTCP_PATH: ${LFI_DMTCP_PATH}"
+
+# Check good instalation
+if [ ! -f "$XPN_DMTCP_PATH" ]; then
+    echo "Error: The $XPN_DMTCP_PATH file does not exist. This script can only be called when XPN compiled with MANA and DMTCP has been installed."
+    exit 1
+fi
+if [ ! -f "$LFI_DMTCP_PATH" ]; then
+    echo "Error: The $LFI_DMTCP_PATH file does not exist. This script can only be called when XPN compiled with LFI, MANA and DMTCP has been installed."
+    exit 1
+fi
+
+# Check XPN_CONF variable
+if [ -z "${XPN_CONF}" ]; then
+    echo "Error: The variable XPN_CONF is not defined."
+    exit 1
+fi
+
+# Check MANA is in the path
+if ! command -v mana_launch >/dev/null 2>&1 || \
+   ! command -v mana_status >/dev/null 2>&1 || \
+   ! command -v mana_coordinator >/dev/null 2>&1; then
+    echo "Error: MANA needs to be in the PATH."
+    exit 1
+fi
+
+# Check running mana_coordinator
+if ! mana_status &> /dev/null; then
+    echo "Launching mana_coordinator because there wasn't one."
+    mana_coordinator
+fi
+
+echo "mana_launch --with-plugin ${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@"
+mana_launch --with-plugin ${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@

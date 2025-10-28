@@ -29,13 +29,22 @@
 namespace XPN {
 
 std::unique_ptr<xpn_server_filesystem> xpn_server_filesystem::Create(filesystem_mode mode) {
+    std::unique_ptr<xpn_server_filesystem> ret = nullptr;
     switch (mode) {
-        case filesystem_mode::disk:
-            return std::make_unique<xpn_server_filesystem_disk>();
-        case filesystem_mode::xpn:
-            return std::make_unique<xpn_server_filesystem_xpn>();
+        case filesystem_mode::disk: {
+            ret = std::make_unique<xpn_server_filesystem_disk>();
+            break;
+        }
+        case filesystem_mode::xpn: {
+            ret = std::make_unique<xpn_server_filesystem_xpn>();
+            break;
+        }
     }
-    std::cerr << "Error: filesystem mode '" << static_cast<int>(mode) << "' is not defined." << std::endl;
-    return nullptr;
+    if (ret) {
+        ret->m_mode = mode;
+    } else {
+        std::cerr << "Error: filesystem mode '" << static_cast<int>(mode) << "' is not defined." << std::endl;
+    }
+    return ret;
 }
 }  // namespace XPN

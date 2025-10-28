@@ -3,6 +3,8 @@ set(UTILS_LIST_CPP
 	# xpn_rebuild_active_reader # TODO: fix with metadata
 	xpn_server_stats
 	xpn_server_monitor
+	xpn_server_flush
+	xpn_server_preload
 )
 
 if(ENABLE_MPI_SERVER)
@@ -34,4 +36,12 @@ foreach (util ${UTILS_LIST_C})
 	add_executable(${util} ${util}.c)
 	target_link_libraries(${util} PRIVATE xpn)
 	install(TARGETS ${util} RUNTIME DESTINATION bin)
+endforeach (util)
+
+set(UTILS_BASH
+	xpn_ckpt
+)
+
+foreach (util ${UTILS_BASH})
+	install(PROGRAMS ${util} DESTINATION bin)
 endforeach (util)

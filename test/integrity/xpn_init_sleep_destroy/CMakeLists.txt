@@ -1,0 +1,5 @@
+
+add_executable(xpn_init_sleep_destroy xpn_init_sleep_destroy.cpp)
+target_link_libraries(xpn_init_sleep_destroy xpn)
+
+install(TARGETS xpn_init_sleep_destroy RUNTIME DESTINATION test/integrity/xpn_init_sleep_destroy)

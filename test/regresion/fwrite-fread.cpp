@@ -11,26 +11,11 @@
 #include "setup.hpp"
 #include "xpn.h"
 
-std::string generate_random_string(size_t length) {
-    const std::string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    std::string result;
-    result.reserve(length);
-
-    std::random_device rd;
-    std::mt19937 generator(rd());
-    std::uniform_int_distribution<size_t> distribution(0, characters.length() - 1);
-
-    for (size_t i = 0; i < length; ++i) {
-        result += characters[distribution(generator)];
-    }
-    return result;
-}
-
 void run_test(int thread = 0) {
     size_t data_size_mb = 1;
     const std::string filename = "/xpn/mega_data_test" + std::to_string(thread) + ".bin";
     size_t total_bytes = data_size_mb * 1024 * 1024;
-    std::string original_data = generate_random_string(total_bytes);
+    std::string original_data = setup::generate_random_string(total_bytes);
     std::cout << "Generated data of " << data_size_mb << " MB." << std::endl;
 
     FILE* file_w = xpn_fopen(filename.c_str(), "w+");

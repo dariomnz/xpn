@@ -1,6 +1,6 @@
 
 /*
- *  Copyright 2020-2024 Felix Garcia Carballeira, Diego Camarmas Alonso, Alejandro Calderon Mateos, Dario Muñoz Muñoz
+ *  Copyright 2020-2025 Felix Garcia Carballeira, Diego Camarmas Alonso, Alejandro Calderon Mateos, Dario Muñoz Muñoz
  *
  *  This file is part of Expand.
  *
@@ -19,17 +19,26 @@
  *
  */
 
-#pragma once
+#include "xpn.h"
 
-#include <string>
-
-namespace XPN
-{
-    class xpn_path
-    {
-    public:
-        static std::string_view get_first_dir(std::string_view path);
-        static std::string_view remove_first_dir(std::string_view path);
-        static int hash(std::string_view path, int max_num, bool is_file);
-    };
+int main(int argc, char *argv[]) {
+    int ret = 0;
+    if (argc != 2) {
+        printf("Usage:\n");
+        printf("./%s <destination shared path>\n", argv[0]);
+        printf("\n");
+        printf("<xpn_server data>  ==>  <destination shared path>\n");
+        printf("\n");
+        return -1;
+    }
+    ret = xpn_init();
+    if (ret < 0) return ret;
+    
+    ret = xpn_flush(argv[1]);
+    if (ret < 0) return ret;
+    
+    ret = xpn_destroy();
+    if (ret < 0) return ret;
 }
+
+/* ................................................................... */

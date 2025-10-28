@@ -22,55 +22,69 @@
 #include "xpn_path.hpp"
 
 #include <filesystem>
-namespace XPN
-{
-    std::string xpn_path::get_first_dir(const std::string &path)
-    {
-        std::filesystem::path p(path);
+namespace XPN {
 
-        for (const auto& part : p)
-        {
-            if (part == "/") continue;    
-            return part.string();
-        }
-        return "";
-    }
+std::string_view xpn_path::get_first_dir(std::string_view path) {
+    // Skip leading slashes
+    size_t start = 0;
+    while (start < path.size() && path[start] == '/') ++start;
 
-    std::string xpn_path::remove_first_dir(const std::string &path)
-    {
-        std::filesystem::path p(path);
-        std::filesystem::path aux_p;
+    // Find the next slash
+    size_t end = start;
+    while (end < path.size() && path[end] != '/') ++end;
 
-        int index = 0;
-        for (const auto& part : p)
-        {
-            if (index != 0){
-                aux_p /= part;
-            } else if (part == "/"){
-                continue;
-            }
-            index++;
-        }
-        return aux_p.string();
-    }
+    // Return the first directory as a string_view
+    if (start < end) return path.substr(start, end - start);
 
-    int xpn_path::hash(const std::string &path, int max_num, bool is_file)
-    {
-        
-        std::filesystem::path file_path(path);
-        
-        std::string name;
-        if (is_file) {
-            name = file_path.filename().string();
-        } else {
-            name = file_path.parent_path().filename().string();
-        }
-
-        int num = 0;
-        for (char ch : name) {
-            num += static_cast<int>(ch);
-        }
-
-        return num % max_num;
-     }
+    return std::string_view{};
 }
+
+std::string_view xpn_path::remove_first_dir(std::string_view path) {
+    // Skip leading slashes
+    size_t start = 0;
+    while (start < path.size() && path[start] == '/') ++start;
+
+    // Find the end of the first directory
+    size_t end = start;
+    while (end < path.size() && path[end] != '/') ++end;
+
+    // Skip any slashes after the first directory
+    while (end < path.size() && path[end] == '/') ++end;
+
+    // Return the rest of the path
+    if (end < path.size()) return path.substr(end);
+
+    return std::string_view{};
+}
+
+int xpn_path::hash(std::string_view path, int max_num, bool is_file) {
+    size_t last_slash = path.find_last_of("/\\");
+    std::string_view name;
+
+    if (is_file) {
+        if (last_slash != std::string_view::npos)
+            name = path.substr(last_slash + 1);
+        else
+            name = path;
+    } else {
+        if (last_slash != std::string_view::npos) {
+            std::string_view parent = path.substr(0, last_slash);
+
+            size_t prev_slash = parent.find_last_of("/\\");
+            if (prev_slash != std::string_view::npos)
+                name = parent.substr(prev_slash + 1);
+            else
+                name = parent;
+        } else {
+            name = path;
+        }
+    }
+
+    int num = 0;
+    for (char ch : name) {
+        num += static_cast<int>(ch);
+    }
+
+    return max_num > 0 ? num % max_num : num;
+}
+}  // namespace XPN

@@ -44,5 +44,6 @@ src/.vscode
 .vscode/settings.json
 test/integrity/xpn/circs
 .vscode
+.cache
 build
 install

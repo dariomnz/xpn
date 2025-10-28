@@ -12,7 +12,10 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # add_compile_options("-DDEBUG")
 add_compile_options("-D_GNU_SOURCE" "-DMPICH_SKIP_MPICXX")
 # add_compile_options("-D_GNU_SOURCE" "-DMPICH_SKIP_MPICXX" "-D_REENTRANT")
-add_compile_options("-fPIC" "-O2" "-g" "-g3" "-ggdb" "-Wall" "-Wextra")
+add_compile_options("-fPIC" "-O2" "-g" "-ggdb" "-gdwarf-4" "-Wall" "-Wextra")
+
+# add_compile_options(-fsanitize=address)
+# add_link_options(-fsanitize=address)
 
 option(ENABLE_MPI_SERVER "Enable the mpi_server module" OFF)
 if(ENABLE_MPI_SERVER)

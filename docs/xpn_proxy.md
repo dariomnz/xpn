@@ -17,11 +17,12 @@ First, you need to set up the necessary port tunnels from your local machine to 
 ```bash
 # Run in client:
 
-# Tunnel for the control port (3456)
-ssh -N -f -L *:3456:localhost:3456 tester005@c3.uc3m.es
+# Tunnel for the control port (3456) and the main comunication for the sck_server port (3457)
+ssh -L *:3456:localhost:3456 -L *:3457:localhost:3457 tester005@c3.uc3m.es
 
-# Tunnel for the main comunication for the sck_server port (3457)
-ssh -N -f -L *:3457:localhost:3457 tester005@c3.uc3m.es
+# In background
+ssh -N -f -L *:3456:localhost:3456 -L *:3457:localhost:3457 tester005@c3.uc3m.es
+
 ```
 
 

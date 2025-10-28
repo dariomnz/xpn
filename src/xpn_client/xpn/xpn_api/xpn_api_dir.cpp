@@ -106,7 +106,7 @@ namespace XPN
 
         m_file_table.remove(dirp->fd);
 
-        delete dirp->path;
+        free(dirp->path);
         delete dirp;
 
         XPN_DEBUG_END;
@@ -127,24 +127,20 @@ namespace XPN
         int master_dir = file->m_mdata.master_dir();
         file->initialize_vfh_dir(master_dir);
 
-        struct ::dirent * entry = new (std::nothrow) dirent;
-        if (entry == nullptr){
-            return nullptr;
-        }
-        auto fut = m_worker->launch([master_dir, &file, &entry](){
-            return file->m_part.m_data_serv[master_dir]->nfi_readdir(file->m_data_vfh[master_dir], *entry);
+        thread_local static struct ::dirent entry = {};
+        auto fut = m_worker->launch([master_dir, &file](){
+            return file->m_part.m_data_serv[master_dir]->nfi_readdir(file->m_data_vfh[master_dir], entry);
         });
 
         res = fut.get();
 
         if (res < 0){
             XPN_DEBUG_END;
-            delete entry;
             return nullptr;
         }
 
         XPN_DEBUG_END;
-        return entry;
+        return &entry;
     }
 
     void xpn_api::rewinddir([[maybe_unused]] DIR *dirp)

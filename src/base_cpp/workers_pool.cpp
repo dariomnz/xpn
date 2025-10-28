@@ -83,6 +83,10 @@ namespace XPN
         } 
     }
 
+    uint32_t workers_pool::size() const {
+        return m_num_threads;
+    }
+
     std::future<int> workers_pool::launch(std::function<int()> task)
     {
         std::future<int> result;
@@ -100,7 +104,7 @@ namespace XPN
 
             result = p_task.get_future();
 
-            m_tasks.emplace(move(p_task)); 
+            m_tasks.emplace(std::move(p_task)); 
         }
         {
             std::unique_lock<std::mutex> lock(m_wait_mutex);
@@ -122,7 +126,7 @@ namespace XPN
         {
             std::unique_lock<std::mutex> lock(m_queue_mutex);
             
-            m_tasks.emplace(move(task)); 
+            m_tasks.emplace(std::move(task)); 
         }
         {
             std::unique_lock<std::mutex> lock(m_wait_mutex);

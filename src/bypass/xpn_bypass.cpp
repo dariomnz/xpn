@@ -49,7 +49,7 @@
         PROXY(printf)("[%ld] ", pthread_self()); \
         PROXY(printf)(__VA_ARGS__);              \
         PROXY(printf)("\n");                     \
-        PROXY(fflush)(stdin);                    \
+        PROXY(fflush)(stdout);                   \
     }
 #else
 #define debug_info(...)
@@ -553,6 +553,7 @@ extern "C" off64_t lseek64(int fd, off64_t offset, int whence) {
     return ret;
 }
 
+#ifndef _STAT_VER
 extern "C" int stat(const char *path, struct stat *buf) {
     int ret;
     debug_info("[BYPASS] >> Begin stat(%s, %p)", path, buf);
@@ -571,6 +572,7 @@ extern "C" int stat(const char *path, struct stat *buf) {
     }
     return ret;
 }
+#endif
 
 extern "C" int __lxstat64(int ver, const char *path, struct stat64 *buf) {
     int ret;
@@ -659,6 +661,7 @@ extern "C" int __xstat(int ver, const char *path, struct stat *buf) {
     return ret;
 }
 
+#ifndef _STAT_VER
 extern "C" int fstat(int fd, struct stat *buf) {
     int ret = -1;
     debug_info("[BYPASS] >> Begin fstat(%d, %p)", fd, buf);
@@ -672,6 +675,7 @@ extern "C" int fstat(int fd, struct stat *buf) {
     }
     return ret;
 }
+#endif
 
 extern "C" int __fxstat(int ver, int fd, struct stat *buf) {
     int ret = -1;

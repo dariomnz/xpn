@@ -38,13 +38,14 @@
 namespace XPN
 {
     // Fordward declaration
-    class xpn_fh;
+    struct xpn_fh;
     class xpn_metadata;
 
     class nfi_server 
     {
     public:
         nfi_server(const xpn_parser &url);
+        virtual ~nfi_server() = default;
         int init_comm();
         int destroy_comm();
         static bool is_local_server(const std::string_view &server);
@@ -66,7 +67,7 @@ namespace XPN
 
         std::unique_ptr<nfi_xpn_server_control_comm> m_control_comm = nullptr;
         std::unique_ptr<nfi_xpn_server_control_comm> m_control_comm_connectionless = nullptr;
-        nfi_xpn_server_comm                         *m_comm = nullptr;
+        std::unique_ptr<nfi_xpn_server_comm>         m_comm = nullptr;
 
     public:
         // Operations 
@@ -90,6 +91,7 @@ namespace XPN
 
         virtual int nfi_flush       (const char *path) = 0;
         virtual int nfi_preload     (const char *path) = 0;
+        virtual int nfi_checkpoint  (const char *path) = 0;
         virtual int nfi_response    () = 0;
     protected:
     
@@ -113,7 +115,7 @@ namespace XPN
                     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
                 } else if (m_comm && m_comm->m_type == server_type::SCK) {
                     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
-                    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+                    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
                     lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
                     debug_info("lock sck comm mutex");
                 }
@@ -146,7 +148,7 @@ namespace XPN
                 m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
             } else if (m_comm->m_type == server_type::SCK) {
                     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
-                auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+                auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
                 lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
                 debug_info("lock sck comm mutex");
             }

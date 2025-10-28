@@ -27,6 +27,9 @@
 #include "config.h"
 #include "dmtcp.h"
 #include "lower-half-api.h"
+#include "lfi.h"
+#include "lfi_async.h"
+#include "lfi_coll.h"
 
 /* ... Const / Const ................................................. */
 
@@ -36,7 +39,7 @@
         NEXT_FNC(printf)("[%ld] ", pthread_self()); \
         NEXT_FNC(printf)(__VA_ARGS__);              \
         NEXT_FNC(printf)("\n");                     \
-        NEXT_FNC(fflush)(stdin);                    \
+        NEXT_FNC(fflush)(stdout);                    \
     }
 #else
 #define debug_info(...)
@@ -178,7 +181,6 @@ extern "C" ssize_t lfi_trecv(int id, void *data, size_t size, int tag) {
 }
 
 // lfi_async.h
-typedef struct lfi_request lfi_request;
 extern "C" lfi_request *lfi_request_create(int id) {
     lfi_request *ret;
     debug_info("[BYPASS] >> lfi_request_create(%d)", id);
@@ -345,8 +347,7 @@ extern "C" ssize_t lfi_cancel(lfi_request *request) {
     return ret;
 }
 
-typedef struct lfi_group lfi_group;
-
+// lfi_coll.h
 extern "C" int lfi_group_create(const char *hostnames[], size_t n_hosts, lfi_group *out_group) {
     int ret;
     debug_info("[BYPASS] >> lfi_group_create(%p, %ld, %p)", hostnames, n_hosts, out_group);
@@ -409,13 +410,25 @@ extern "C" int lfi_barrier(lfi_group *group) {
 
 extern "C" int lfi_broadcast(lfi_group *group, int root, void *data, size_t size) {
     int ret;
-    debug_info("[BYPASS] >> lfi_cancel(%p, %d, %p, %ld)", group, root, data, size);
+    debug_info("[BYPASS] >> lfi_broadcast(%p, %d, %p, %ld)", group, root, data, size);
     DMTCP_PLUGIN_DISABLE_CKPT();
     JUMP_TO_LOWER_HALF(lh_info->fsaddr);
     ret = NEXT_FUNC(broadcast)(group, root, data, size);
     RETURN_TO_UPPER_HALF();
     DMTCP_PLUGIN_ENABLE_CKPT();
-    debug_info("[BYPASS] << lfi_cancel(%p, %d, %p, %ld) -> %d", group, root, data, size, ret);
+    debug_info("[BYPASS] << lfi_broadcast(%p, %d, %p, %ld) -> %d", group, root, data, size, ret);
+    return ret;
+}
+
+extern "C" int lfi_allreduce(lfi_group *group, void *data, enum lfi_op_type_enum type, enum lfi_op_enum op) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_allreduce(%p, %d, %d, %d)", group, data, static_cast<int>(type), static_cast<int>(op));
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(allreduce)(group, data, type, op);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_allreduce(%p, %d, %d, %d) -> %d", group, data, static_cast<int>(type), static_cast<int>(op), ret);
     return ret;
 }
 

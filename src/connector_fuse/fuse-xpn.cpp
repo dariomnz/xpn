@@ -30,6 +30,7 @@
 #include <string>
 
 #include "base_cpp/debug.hpp"
+using namespace XPN;
 #include "xpn.h"
 #ifdef HAVE_SETXATTR
 #include <sys/xattr.h>
@@ -457,14 +458,14 @@ static int xmp_fsync(const char *path, int isdatasync, struct fuse_file_info *fi
     return 0;
 }
 
-static off_t xmp_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi) {
-    debug_info("[FUSE-XPN] Init lseek(" << fi->fh << ", " << path << ", " << off << ", " << whence << ")");
-    (void)path;
-    xpn_lseek(fi->fh, off, whence);
-    debug_info("[FUSE-XPN] End lseek(" << fi->fh << ", " << path << ", " << off << ", " << whence << ")");
+// static off_t xmp_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi) {
+//     debug_info("[FUSE-XPN] Init lseek(" << fi->fh << ", " << path << ", " << off << ", " << whence << ")");
+//     (void)path;
+//     xpn_lseek(fi->fh, off, whence);
+//     debug_info("[FUSE-XPN] End lseek(" << fi->fh << ", " << path << ", " << off << ", " << whence << ")");
 
-    return 0;
-}
+//     return 0;
+// }
 
 #ifdef HAVE_POSIX_FALLOCATE
 static int xmp_fallocate(const char *path, int mode, off_t offset, off_t length, struct fuse_file_info *fi) {
@@ -562,8 +563,8 @@ static struct fuse_operations xmp_oper = {
     .read_buf = nullptr,
     .flock = nullptr,
     .fallocate = nullptr,
-    .copy_file_range = nullptr,
-    .lseek = xmp_lseek,
+    // .copy_file_range = nullptr,
+    // .lseek = xmp_lseek,
 };
 
 int main(int argc, char *argv[]) {

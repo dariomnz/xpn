@@ -37,6 +37,10 @@ namespace XPN
         wait_all();
     }
 
+    uint32_t workers_on_demand::size() const {
+        return m_num_threads;
+    }
+
     std::future<int> workers_on_demand::launch(std::function<int()> task)
     {
         {

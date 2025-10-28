@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::thread([&to_stop, argv]() {
+        std::thread([&to_stop]() {
             int ret = 0;
             int socket;
             ret = socket::server_create(monitor_port, socket);

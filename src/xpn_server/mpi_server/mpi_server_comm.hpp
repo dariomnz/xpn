@@ -32,14 +32,21 @@ namespace XPN
   class mpi_server_comm : public xpn_server_comm
   {
   public:
-    mpi_server_comm(MPI_Comm &comm) : m_comm(comm) {}
+    mpi_server_comm(MPI_Comm &comm) : m_comm(comm) {
+      // For unique rank
+      static int64_t counter = 0;
+      server_rank = counter++;
+    }
     ~mpi_server_comm() override {}
 
     int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) override;
     int64_t read_data(void *data, int64_t size, int rank_client_id, int tag_client_id) override;
     int64_t write_data(const void *data, int64_t size, int rank_client_id, int tag_client_id) override;
-  public:
+
+    int64_t get_rank() override { return server_rank; }
+   public:
     MPI_Comm m_comm;
+    int64_t server_rank;
   };
   
   class mpi_server_control_comm : public xpn_server_control_comm
@@ -48,10 +55,10 @@ namespace XPN
     mpi_server_control_comm(xpn_server_params &params);
     ~mpi_server_control_comm() override;
     
-    xpn_server_comm* accept(int socket, bool sendData = true) override;
-    void disconnect(xpn_server_comm *comm) override;
+    std::shared_ptr<xpn_server_comm> accept(int socket, bool sendData = true) override;
+    void disconnect(std::shared_ptr<xpn_server_comm> comm) override;
 
-    xpn_server_comm* create(int rank_client_id) override;
+    std::shared_ptr<xpn_server_comm> create(int rank_client_id) override;
     int rearm(int rank_client_id) override;
     void disconnect(int rank_client_id) override;
     int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) override;

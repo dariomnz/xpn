@@ -80,7 +80,7 @@ namespace XPN
             if (stream->_IO_buf_base != NULL) {
                 stream->_IO_buf_base = NULL;
             }
-            free(stream);
+            delete stream;
         }
         else
         {

@@ -20,12 +20,14 @@
  */
 
 #include <unistd.h>
+#include <memory>
 #include <vector>
 #include <string>
 #include <thread>
 #include "base_cpp/socket.hpp"
 #include "base_cpp/timer.hpp"
 #include "base_cpp/xpn_env.hpp"
+#include "xpn_server/xpn_server_ops.hpp"
 #include "xpn_server_comm.hpp"
 
 #include "xpn_server.hpp"
@@ -34,7 +36,7 @@
 namespace XPN
 {
 
-void xpn_server::dispatcher ( xpn_server_comm* comm )
+void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
 {
     int ret;
 
@@ -66,22 +68,26 @@ void xpn_server::dispatcher ( xpn_server_comm* comm )
             debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] DISCONNECT received");
 
             disconnect = 1;
-            m_clients--;
+            std::unique_lock l(m_clients_mutex);
+            m_clients.erase(comm->get_rank());
+            msg_pool.release(msg);
             continue;
         }
-
+        
         if (type_op == xpn_server_ops::FINALIZE) {
             debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] FINALIZE received");
-
+            
             disconnect = 1;
-            m_clients--;
+            std::unique_lock l(m_clients_mutex);
+            m_clients.erase(comm->get_rank());
+            msg_pool.release(msg);
             continue;
         }
         timer timer;
-        m_worker2->launch_no_future([this, timer, comm, msg, rank_client_id, tag_client_id] {
+        m_worker2->launch_no_future([this, timer, comm, msg, rank_client_id, tag_client_id] () {
             std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); } 
-            do_operation(comm, *msg, rank_client_id, tag_client_id, timer);
+            do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
             msg_pool.release(msg);
         });
 
@@ -89,7 +95,10 @@ void xpn_server::dispatcher ( xpn_server_comm* comm )
     }
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] Client "<<rank_client_id<<" close");
-
+    {
+        std::unique_lock l(m_clients_mutex);
+        m_clients.erase(comm->get_rank());
+    }
     m_control_comm->disconnect(comm);
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] End");
@@ -107,12 +116,12 @@ void xpn_server::one_dispatcher () {
     {
         {
             std::unique_lock l(m_clients_mutex);
-            m_clients_cv.wait(l, [this](){return m_clients != 0;});
+            m_clients_cv.wait(l, [this](){return m_clients.size() != 0 || m_disconnect;});
             if (m_disconnect){
                 break;
             }
+            debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Waiting for operation, clients: "<<m_clients.size());
         }
-        debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Waiting for operation");
         msg = msg_pool.acquire();
         if (msg == nullptr) {
             debug_error("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] ERROR: new msg allocation");
@@ -122,8 +131,9 @@ void xpn_server::one_dispatcher () {
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] read operation");
         ret = m_control_comm->read_operation(*msg, rank_client_id, tag_client_id);
         if (ret < 0) {
-            debug_error("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] ERROR: read operation fail");
-            return;
+            debug_error("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] ERROR: read operation fail mark as disconnected");
+            msg->op = static_cast<int32_t>(xpn_server_ops::DISCONNECT);
+            m_some_client_had_error = true;
         }
 
         type_op = static_cast<xpn_server_ops>(msg->op);
@@ -136,22 +146,26 @@ void xpn_server::one_dispatcher () {
             
             {
                 std::unique_lock l(m_clients_mutex);
-                m_clients--;
+                m_clients.erase(rank_client_id);
                 m_clients_cv.notify_all();
-                debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Currently "<<m_clients<<" clients");
+                debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Currently "<<m_clients.size()<<" clients");
             }
             
+            msg_pool.release(msg);
             continue;
         }
 
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Worker launch");
-        m_worker2->launch_no_future([this, timer, msg, rank_client_id, tag_client_id]{
+        m_worker2->launch_no_future([this, timer, msg, rank_client_id, tag_client_id] () {
             std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); }
-            xpn_server_comm* comm = m_control_comm->create(rank_client_id);
-            do_operation(comm, *msg, rank_client_id, tag_client_id, timer);
-            delete comm;
+            xpn_server_comm *comm_ptr = nullptr;
+            {
+                std::unique_lock l(m_clients_mutex);
+                comm_ptr = m_clients[rank_client_id].get();
+            }
+            do_operation(*comm_ptr, *msg, rank_client_id, tag_client_id, timer);
             msg_pool.release(msg);
             m_control_comm->rearm(rank_client_id);
         });
@@ -182,7 +196,7 @@ void xpn_server::connectionless_dispatcher () {
             return;
         }
 
-        auto comm = m_control_comm_connectionless->accept(-1, false);
+        std::shared_ptr<xpn_server_comm> comm = m_control_comm_connectionless->accept(-1, false);
         if (m_disconnect) {
             debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] disconnect");
             return;
@@ -209,10 +223,10 @@ void xpn_server::connectionless_dispatcher () {
 
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] Worker launch");
-        m_worker2->launch_no_future([this, comm, timer, msg, rank_client_id, tag_client_id]{
+        m_worker2->launch_no_future([this, comm, timer, msg, rank_client_id, tag_client_id] () {
             std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); }
-            do_operation(comm, *msg, rank_client_id, tag_client_id, timer);
+            do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
             m_control_comm_connectionless->disconnect(comm);
             msg_pool.release(msg);
         });
@@ -227,29 +241,27 @@ void xpn_server::accept ( int connection_socket )
 {
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] Start accepting");
     
-    xpn_server_comm* comm = m_control_comm->accept(connection_socket);
-
+    std::shared_ptr<xpn_server_comm> comm = m_control_comm->accept(connection_socket);
     {
         std::unique_lock l(m_clients_mutex);
-        m_clients++;
-        debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] notify new client "<<m_clients);
+        m_clients.emplace(comm->get_rank(), comm);
+        debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] notify new client "<<m_clients.size());
         m_clients_cv.notify_all();
     }
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] Accept received");
 
     if (m_params.srv_type == server_type::FABRIC || m_params.srv_type == server_type::SCK){
-        if (comm){
-            delete comm;
-        }
-        
         static bool only_one = true;
         if (only_one){
             only_one = false;
-            m_worker1->launch_no_future([this]{
-                this->one_dispatcher();
-                return 0;
-            });
+            const int THREADS = 1;
+            for(size_t i = 0; i < THREADS; i++){
+                m_worker1->launch_no_future([this]{
+                    this->one_dispatcher();
+                    return 0;
+                });
+            }
         }
     }else{
         m_worker1->launch_no_future([this, comm]{
@@ -275,8 +287,11 @@ void xpn_server::finish ( void )
     m_control_comm.reset();
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_finish] comms destroy");
     
+    debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_finish] Before worker1 reset");
     m_worker1.reset();
+    debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_finish] Before worker2 reset");
     m_worker2.reset();
+    debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_finish] Before workerConnectionLess reset");
     m_workerConnectionLess.reset();
     
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_finish] workers destroy");
@@ -294,6 +309,8 @@ xpn_server::xpn_server(int argc, char *argv[]) : m_params(argc, argv)
         std::cerr << "Error: unexpected error cannot create filesystem interface" << std::endl;
         std::raise(SIGTERM);
     }
+
+    m_start_time = std::chrono::high_resolution_clock::now();
 }
 
 xpn_server::~xpn_server()
@@ -487,7 +504,7 @@ int xpn_server::stop()
             auto port_pos = name.find_last_of(":");
             if (port_pos != std::string::npos){
                 srv_name = name.substr(0, port_pos);
-                auto aux_port = name.substr(port_pos + 1, name.size() - (port_pos + 1));
+                std::string aux_port = name.substr(port_pos + 1, name.size() - (port_pos + 1));
                 srv_port = stoi(aux_port);
             }else{
                 srv_name = name;

@@ -27,12 +27,13 @@
 #spack load mpich
 #spack load pkg-config
 module load cmake mpich
-spack load autoconf
+# spack load autoconf
 
 # 2) working path...
 MPICC_PATH=/opt/ohpc/pub/mpi/mpich-4.3.0-ofi
 FABRIC_PATH=$HOME/dariomnz/bin/libfabric
 DMTCP_PATH=$HOME/dariomnz/src/mana/dmtcp
+FUSE_PATH="-D ENABLE_FUSE=on -D FUSE_LIBRARY=/usr/lib64/libfuse3.so -D FUSE_INCLUDE_DIR=/usr/include/fuse3"
 INSTALL_PATH=$HOME/dariomnz/bin/
 BASE_PATH=$(dirname $0)
 
@@ -40,7 +41,7 @@ export LD_LIBRARY_PATH=$MPICC_PATH/lib:$FABRIC_PATH/lib:$LD_LIBRARY_PATH
 export PATH=$MPICC_PATH/bin:$PATH
 
 # 3) preconfigure build-me...
-$BASE_PATH/../software/xpn.sh           -m $MPICC_PATH -f $FABRIC_PATH -i $INSTALL_PATH -s $BASE_PATH/../../../../xpn -d $DMTCP_PATH
+$BASE_PATH/../software/xpn.sh           -m $MPICC_PATH -f $FABRIC_PATH -i $INSTALL_PATH -s $BASE_PATH/../../../../xpn -d $DMTCP_PATH -u "${FUSE_PATH}"
 # $BASE_PATH/../software/ior.sh         -m $MPICC_PATH/bin/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../ior
 # $BASE_PATH/../software/lz4.sh         -m $MPICC_PATH/bin/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../io500/build/pfind/lz4/
 # $BASE_PATH/../software/io500.sh       -m $MPICC_PATH/bin/mpicc -i $INSTALL_PATH -s $BASE_PATH/../../../../io500

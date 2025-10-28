@@ -32,7 +32,7 @@ namespace XPN
         m_ops.resize(file.m_part.m_data_serv.size());
     }
 
-    void xpn_rw_buffer::calculate_reads()
+    void xpn_rw_buffer::calculate_reads(bool optimize)
     {
         int64_t new_offset, l_offset;
         int l_serv;
@@ -66,9 +66,11 @@ namespace XPN
             new_offset = m_offset + count;
         }
         
-        debug_info(to_string());
+        debug_info(dump());
 
-        join_ops();
+        if (optimize) {
+            join_ops();
+        }
     }
 
     void xpn_rw_buffer::fix_ops_reads()
@@ -88,7 +90,7 @@ namespace XPN
         }
     }
 
-    void xpn_rw_buffer::calculate_writes()
+    void xpn_rw_buffer::calculate_writes(bool optimize)
     {
         int64_t new_offset, l_offset;
         int l_serv;
@@ -124,9 +126,11 @@ namespace XPN
             new_offset = m_offset + count;
         }
 
-        debug_info(to_string());
+        debug_info(dump());
 
-        join_ops();
+        if(optimize) {
+            join_ops();
+        }
     }
     
     void xpn_rw_buffer::join_ops()
@@ -157,7 +161,7 @@ namespace XPN
             }
         }
         
-        debug_info(to_string());
+        debug_info(dump());
     }
 
     uint64_t xpn_rw_buffer::num_ops()
@@ -187,34 +191,24 @@ namespace XPN
         return count;
     }
 
-    std::string xpn_rw_buffer::to_string()
-    {
-        std::stringstream out;
-        out << "xpn_rw_buffer " << m_file.m_path;
-        out << " buf " << (void *)m_buffer;
-        out << " size " << m_size;
-        out << " off " << m_offset << std::endl;
+    const char *xpn_rw_buffer::dump() {
+        fprintf(stderr, "xpn_rw_buffer %s buf %p size %ld off %ld\n", m_file.m_path.c_str(), (void *)m_buffer, m_size,
+                m_offset);
 
-        for (uint64_t i = 0; i < m_ops.size(); i++)
-        {
-            out << "Ops in serv " << i << ":" << std::endl;
-            for (uint64_t j = 0; j < m_ops[i].size(); j++)
-            {
-                out << "    " << m_ops[i][j].to_string() << std::endl;
+        for (uint64_t i = 0; i < m_ops.size(); i++) {
+            fprintf(stderr, "Ops in serv %ld: %ld\n", i, m_ops[i].size());
+            for (uint64_t j = 0; j < m_ops[i].size(); j++) {
+                m_ops[i][j].dump();
             }
         }
-
-        return out.str();
+        fflush(stderr);
+        return "";
     }
 
-    std::string xpn_rw_buffer::rw_buffer::to_string()
+    const char* xpn_rw_buffer::rw_buffer::dump()
     {
-        std::stringstream out;
-        out << "buf " << (void *)get_buffer();
-        out << " size " << get_size();
-        out << " off_serv " << offset_serv;
-        out << " was_move " << (was_move() ? "true" : "false");
-        return out.str();
+        fprintf(stderr, "    buf %p size %ld off_serv %ld was_move %s\n", get_buffer(), get_size(), offset_serv, (was_move() ? "true" : "false"));
+        return "";
     }
 
     /**

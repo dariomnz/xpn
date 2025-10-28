@@ -165,9 +165,11 @@ int xpn_controller::local_mk_config() {
     return ret;
 }
 
-int xpn_controller::mk_config(const std::string_view& hostfile, const std::string_view& hostlist, const char* conffile,
-                              const std::string_view& bsize, const std::string_view& replication_level,
-                              const std::string_view& server_type, const std::string_view& storage_path) {
+// TODO: allow use of hostlist, not only hostfile
+int xpn_controller::mk_config(const std::string_view& hostfile, [[maybe_unused]] const std::string_view& hostlist,
+                              const char* conffile, const std::string_view& bsize,
+                              const std::string_view& replication_level, const std::string_view& server_type,
+                              const std::string_view& storage_path) {
     int ret;
     debug_info("[XPN_CONTROLLER] >> Start");
     if (hostfile.empty()) {
@@ -198,7 +200,7 @@ int xpn_controller::mk_config(const std::string_view& hostfile, const std::strin
     // Read the hosts
     {
         std::string filename(hostfile);
-        std::ifstream file(filename);
+        std::ifstream file(filename.c_str());
         if (!file.is_open()) {
             std::cerr << "Error: hostfile '" << filename << "' cannot be open " << std::endl;
             return -1;
@@ -380,7 +382,7 @@ int xpn_controller::stop_servers(bool await) {
 
     int index = 0;
     for (auto& name : m_servers) {
-        v_res[index++] = worker->launch([this, &name, await]() {
+        v_res[index++] = worker->launch([&name, await]() {
             debug_info("Stopping server (" << name << ")");
             int socket;
             int ret;
@@ -441,7 +443,7 @@ int xpn_controller::ping_servers() {
     std::vector<std::future<int>> v_res(m_servers.size());
     int index = 0;
     for (auto& name : m_servers) {
-        v_res[index++] = worker->launch([this, &name]() {
+        v_res[index++] = worker->launch([&name]() {
             debug_info("Ping server (" << name << ")");
             int socket;
             int ret = -1;

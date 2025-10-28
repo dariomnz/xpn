@@ -80,7 +80,7 @@ int nfi_xpn_server::nfi_close (const xpn_fh &fh)
 {
   bool is_mqtt = false;
   if (m_comm->m_type == server_type::SCK) {
-      auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+      auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
       if (sck_comm->m_mqtt) {
         is_mqtt = true;
       }
@@ -138,7 +138,7 @@ int64_t nfi_xpn_server::nfi_read (const xpn_fh &fh, char *buffer, int64_t offset
     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
   }else if (m_comm->m_type == server_type::SCK) {
     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
-    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
     lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
     debug_info("lock sck comm mutex");
   }
@@ -227,7 +227,7 @@ int64_t nfi_xpn_server::nfi_write (const xpn_fh &fh, const char *buffer, int64_t
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_write] >> Begin");
 
   if (m_comm->m_type == server_type::SCK) {
-    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
     if (sck_comm->m_mqtt){
       #if defined(ENABLE_MQTT_SERVER)
       return nfi_mqtt_server::publish(static_cast<mosquitto*>(sck_comm->m_mqtt), fh.path.c_str(), buffer, offset, size);
@@ -245,7 +245,7 @@ int64_t nfi_xpn_server::nfi_write (const xpn_fh &fh, const char *buffer, int64_t
     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
   }else if (m_comm->m_type == server_type::SCK) {
     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
-    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm);
+    auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
     lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
     debug_info("lock sck comm mutex");
   }
@@ -730,7 +730,7 @@ int nfi_xpn_server::nfi_flush (const char *path)
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_flush] >> Begin");
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_flush] nfi_flush("<<m_path<<", "<<path<<")");
 
-  st_xpn_server_flush_preload msg;
+  st_xpn_server_flush_preload_ckpt msg;
     
   std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
   msg.paths.path1()[length] = '\0';
@@ -754,7 +754,7 @@ int nfi_xpn_server::nfi_preload (const char *path)
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] >> Begin");
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")");
 
-  st_xpn_server_flush_preload msg;
+  st_xpn_server_flush_preload_ckpt msg;
   
   size_t length = strlen(path);
   strcpy(msg.paths.path1(), path);
@@ -769,6 +769,30 @@ int nfi_xpn_server::nfi_preload (const char *path)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_preload] nfi_preload("<<m_path<<", "<<path<<")="<<ret);
   debug_info("[NFI_XPN] [nfi_preload] >> End");
+  return ret;
+}
+
+int nfi_xpn_server::nfi_checkpoint (const char *path)
+{
+  int ret;
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_checkpoint] >> Begin");
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_checkpoint] nfi_checkpoint("<<m_path<<", "<<path<<")");
+
+  st_xpn_server_flush_preload_ckpt msg;
+    
+  std::size_t length = m_path.copy(msg.paths.path1(), m_path.size());
+  msg.paths.path1()[length] = '\0';
+  msg.paths.size1 = length + 1;
+  
+  length = strlen(path);
+  strcpy(msg.paths.path2(), path);
+  msg.paths.path2()[length] = '\0';
+  msg.paths.size2 = length + 1;
+
+  ret = nfi_write_operation(xpn_server_ops::CHECKPOINT, msg);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_checkpoint] nfi_checkpoint("<<m_path<<", "<<path<<")="<<ret);
+  debug_info("[NFI_XPN] [nfi_checkpoint] >> End");
   return ret;
 }
 

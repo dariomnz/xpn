@@ -25,6 +25,7 @@
 #include "base_cpp/ns.hpp"
 #include "base_cpp/socket.hpp"
 #include <csignal>
+#include <cstring>
 
 #ifdef ENABLE_MQTT_SERVER
 #include "../mqtt_server/mqtt_server_comm.hpp"
@@ -93,7 +94,7 @@ sck_server_control_comm::~sck_server_control_comm()
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_CONTROL_COMM] [sck_server_comm_destroy] >> End");
 }
 
-xpn_server_comm* sck_server_control_comm::accept ( int socket, bool sendData )
+std::shared_ptr<xpn_server_comm> sck_server_control_comm::accept ( int socket, bool sendData )
 {
   int    ret, sc, flag;
   struct sockaddr_in client_addr;
@@ -157,7 +158,7 @@ xpn_server_comm* sck_server_control_comm::accept ( int socket, bool sendData )
 
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_CONTROL_COMM] [sck_server_control_comm_accept] << End");
 
-  return new (std::nothrow) sck_server_comm(sc);
+  return std::make_shared<sck_server_comm>(sc);
 }
 
 int sck_server_control_comm::rearm(int socket) {
@@ -173,19 +174,17 @@ int sck_server_control_comm::rearm(int socket) {
   return 0;
 }
 
-void sck_server_control_comm::disconnect ( xpn_server_comm* comm )
+void sck_server_control_comm::disconnect ( std::shared_ptr<xpn_server_comm> comm )
 {
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] >> Begin");
   
-  sck_server_comm *in_comm = static_cast<sck_server_comm*>(comm);
+  sck_server_comm *in_comm = static_cast<sck_server_comm*>(comm.get());
 
   if (epoll_ctl(m_epoll, EPOLL_CTL_DEL, in_comm->m_socket, NULL) == -1){
     debug_error("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] Error: epoll_ctl "<<strerror(errno));
   }
 
   socket::close(in_comm->m_socket);
-
-  delete comm;
 
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] << End");
 }
@@ -199,8 +198,8 @@ void sck_server_control_comm::disconnect ( int socket )
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] << End");
 }
 
-xpn_server_comm* sck_server_control_comm::create ( int rank_client_id ) {
-  return new (std::nothrow) sck_server_comm(rank_client_id);
+std::shared_ptr<xpn_server_comm> sck_server_control_comm::create ( int rank_client_id ) {
+  return std::make_shared<sck_server_comm>(rank_client_id);
 }
 
 int64_t sck_read_operation ( int socket, xpn_server_msg &msg, int &tag_client_id )
@@ -217,9 +216,12 @@ int64_t sck_read_operation ( int socket, xpn_server_msg &msg, int &tag_client_id
   // Receive the head
   while(received < msg.get_header_size()) {
     ret = PROXY(read)(socket, msg_p+received, msg.get_header_size()-received);
-    if (ret <= 0) {
-      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] ERROR: read fails");
+    if (ret < 0) {
+      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] ERROR: read fails "<<strerror(errno));
       return -1;
+    } else if (ret == 0){
+      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] Finish comunication");
+      return -2;
     }
     received += ret;
     debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] received "<<received<<" msg header size "<<msg.get_header_size());
@@ -229,9 +231,12 @@ int64_t sck_read_operation ( int socket, xpn_server_msg &msg, int &tag_client_id
   // Receive the rest of the msg
   while (received < msg.get_size()) {
     ret = PROXY(read)(socket, msg_p+received, msg.get_size()-received);
-    if (ret <= 0) {
-      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] ERROR: read fails");
+    if (ret < 0) {
+      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] ERROR: read fails "<<strerror(errno));
       return -1;
+    } else if (ret == 0){
+      debug_warning("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] Finish comunication");
+      return -2;
     }
     received += ret;
     debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_read_operation] received "<<received<<" msg size "<<msg.get_size());
@@ -247,6 +252,40 @@ int64_t sck_read_operation ( int socket, xpn_server_msg &msg, int &tag_client_id
   return 0;
 }
 
+struct format_epoll_events {
+  uint32_t m_events;
+
+  format_epoll_events(uint32_t events) : m_events(events) {}
+
+  friend std::ostream &operator<<(std::ostream &os, const format_epoll_events &fmt) {
+    std::string flags_str = "";
+    uint32_t events = fmt.m_events;
+
+    if (events & EPOLLIN) flags_str += "EPOLLIN | ";       
+    if (events & EPOLLOUT) flags_str += "EPOLLOUT | ";     
+    if (events & EPOLLRDHUP) flags_str += "EPOLLRDHUP | "; 
+    if (events & EPOLLPRI) flags_str += "EPOLLPRI | ";     
+    if (events & EPOLLERR) flags_str += "EPOLLERR | ";     
+    if (events & EPOLLHUP) flags_str += "EPOLLHUP | ";     
+
+    if (events & EPOLLET) flags_str += "EPOLLET | ";           
+    if (events & EPOLLONESHOT) flags_str += "EPOLLONESHOT | "; 
+
+    if (flags_str.empty()) {
+      if (events == 0) {
+          os << "NONE(0x0)";
+      } else {
+          os << "UNKNOWN(0x" << std::hex << events << std::dec << ")";
+      }
+    } else {
+      flags_str.erase(flags_str.length() - 3);
+      os << flags_str;
+    }
+
+    return os;
+  }
+};
+
 int64_t sck_server_control_comm::read_operation ( xpn_server_msg &msg, int &rank_client_id, int &tag_client_id )
 {
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_control_comm_read_operation] >> Begin");
@@ -257,6 +296,8 @@ int64_t sck_server_control_comm::read_operation ( xpn_server_msg &msg, int &rank
     debug_error("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_control_comm_read_operation] Error epoll_wait "<<strerror(errno));
     return -1;
   }
+
+  debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_control_comm_read_operation] event "<<format_epoll_events(event.events)<<" fd "<<event.data.fd);
 
   int socket = event.data.fd;
   rank_client_id = socket;

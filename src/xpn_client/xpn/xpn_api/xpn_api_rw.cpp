@@ -19,6 +19,7 @@
  *
  */
 
+#include "base_cpp/debug.hpp"
 #include "xpn/xpn_api.hpp"
 #include "xpn/xpn_rw.hpp"
 #include <iomanip>
@@ -68,7 +69,9 @@ namespace XPN
         }
 
         xpn_rw_buffer rw_buff(*file.get(), offset, const_cast<void*>(buffer), size);
-        rw_buff.calculate_reads();
+        XPN_DEBUG("Before calculate_reads "<<rw_buff.dump());
+        rw_buff.calculate_reads(xpn_env::get_instance().xpn_group_reads_writes);
+        XPN_DEBUG("After calculate_reads "<<rw_buff.dump());
 
         std::vector<std::future<int>> v_res(rw_buff.num_ops());
         int index = 0;
@@ -181,7 +184,9 @@ namespace XPN
         }
 
         xpn_rw_buffer rw_buff(*file.get(), offset, const_cast<void*>(buffer), size);
-        rw_buff.calculate_writes();
+        XPN_DEBUG("Before calculate_writes "<<rw_buff.dump());
+        rw_buff.calculate_writes(xpn_env::get_instance().xpn_group_reads_writes);
+        XPN_DEBUG("After calculate_writes "<<rw_buff.dump());
 
         std::vector<std::future<int>> v_res(rw_buff.num_ops());
         int index = 0;

@@ -42,10 +42,10 @@ namespace XPN
         int print_stats();
 
         void accept(int socket);
-        void dispatcher(xpn_server_comm *comm);
+        void dispatcher(std::shared_ptr<xpn_server_comm> comm);
         void one_dispatcher();
         void connectionless_dispatcher();
-        void do_operation(xpn_server_comm *comm, const xpn_server_msg& msg, int rank_client_id, int tag_client_id, timer timer);
+        void do_operation(xpn_server_comm &comm, const xpn_server_msg& msg, int rank_client_id, int tag_client_id, timer timer);
         void finish();
 
     public:
@@ -59,7 +59,7 @@ namespace XPN
         std::unique_ptr<xpn_window_stats> m_window_stats;
 
         bool m_disconnect = false;
-        int64_t m_clients = 0;
+        std::unordered_map<int64_t, std::shared_ptr<xpn_server_comm>> m_clients = {};
         std::mutex m_clients_mutex = {};
         std::condition_variable m_clients_cv = {};
 
@@ -78,6 +78,9 @@ namespace XPN
         };
         std::mutex m_file_map_md_fq_mutex;
         std::unordered_map<std::string, file_map_md_fq_item> m_file_map_md_fq;
+
+        std::chrono::time_point<std::chrono::high_resolution_clock> m_start_time;
+        bool m_some_client_had_error = false;
 
     public:
         // File operations
@@ -111,7 +114,8 @@ namespace XPN
         void release_mdata_queue(const char *path, file_map_md_fq_item &item);
         
         // Flush preload
-        void op_flush        ( xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id, int tag_client_id );
-        void op_preload        ( xpn_server_comm &comm, const st_xpn_server_flush_preload &head, int rank_client_id, int tag_client_id );
+        void op_flush        ( xpn_server_comm &comm, const st_xpn_server_flush_preload_ckpt &head, int rank_client_id, int tag_client_id );
+        void op_preload      ( xpn_server_comm &comm, const st_xpn_server_flush_preload_ckpt &head, int rank_client_id, int tag_client_id );
+        void op_checkpoint   ( xpn_server_comm &comm, const st_xpn_server_flush_preload_ckpt &head, int rank_client_id, int tag_client_id );
     };    
 }

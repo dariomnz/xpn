@@ -55,6 +55,7 @@
   int         xpn_rmdir (const char *path);
 
   // xpn_init.c
+  int         xpn_initialized ( void );
   int         xpn_init    ( void );
   int         xpn_destroy ( void );
   void        xpn_print_partitions ( void );
@@ -62,6 +63,7 @@
 
   int         xpn_flush( const char * path );
   int         xpn_preload( const char * path );
+  int         xpn_checkpoint( const char * path );
 
   // to test fault tolerant
   int         xpn_mark_error_server(int index);
@@ -76,6 +78,8 @@
   int         xpn_close     (int fd);
   int         xpn_unlink    (const char *path);
   int         xpn_rename    (const char *path, const char *newpath);
+  int         xpn_transfer_xpn2fs    (const char *path, const char *newpath);
+  int         xpn_transfer_fs2xpn    (const char *path, const char *newpath);
   int         xpn_fstat     (int fd, struct stat *sb);
   int         xpn_stat      (const char *path, struct stat *sb);
   int         xpn_chown     (const char *path, uid_t owner, gid_t group);

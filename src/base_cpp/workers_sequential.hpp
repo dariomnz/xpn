@@ -34,5 +34,6 @@ namespace XPN
         std::future<int> launch(std::function<int()> task) override;
         void launch_no_future(std::function<void()> task) override;
         void wait_all() override;
+        uint32_t size() const override;
     };
 } // namespace XPN
