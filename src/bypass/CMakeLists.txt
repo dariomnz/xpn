@@ -48,6 +48,22 @@ if(DMTCP_PATH)
 
     install(TARGETS ${DMTCP_PLUGIN} LIBRARY DESTINATION lib)
 
+    set(DMTCP_PLUGIN "ckpt_time_dmtcp")
+    set(LIB_SOURCES "ckpt_time_dmtcp.cpp")
+    add_library(${DMTCP_PLUGIN} SHARED ${LIB_SOURCES})
+    set_target_properties(${DMTCP_PLUGIN} PROPERTIES PREFIX "")
+    target_include_directories(${DMTCP_PLUGIN} PUBLIC 
+        "${PROJECT_SOURCE_DIR}/src"
+        "${PROJECT_SOURCE_DIR}/src/xpn_client"
+        "${PROJECT_SOURCE_DIR}/libs/lfi/include"
+        ${DMTCP_INCLUDE}
+        "${DMTCP_PATH}/../mpi-proxy-split/lower-half"
+    )
+    target_compile_definitions(${DMTCP_PLUGIN} PUBLIC DMTCP) # -DDMTCP
+    target_link_libraries(${DMTCP_PLUGIN} PUBLIC rt dl)
+
+    install(TARGETS ${DMTCP_PLUGIN} LIBRARY DESTINATION lib)
+
     
     add_library(xpn_bypass_debug SHARED "xpn_bypass_debug.cpp")
 
