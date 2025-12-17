@@ -37,6 +37,7 @@ namespace XPN
         int64_t dir = 0;            // pointer to directory in the server when XPN_SESSION_DIR set
         int fd = -1;                // file_descriptor in the server when XPN_SESSION_FILE set
 
+        xpn_fh() { path.reserve(xpn_env::get_instance().xpn_reserve_path_vfh); }
         bool is_initialized() {return !path.empty();}
         void reset() {*this = {};}
     };

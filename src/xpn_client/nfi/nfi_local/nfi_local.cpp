@@ -35,7 +35,17 @@ int nfi_local::nfi_open (const std::string &path, int flags, mode_t mode, xpn_fh
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] >> Begin");
 
-  fho.path = m_path + "/" + path;
+  size_t total_needed = m_path.size() + 1 + path.size();
+
+  if (xpn_env::get_instance().xpn_reserve_path_vfh != 0 && fho.path.capacity() < total_needed) {
+      print("ERROR: xpn_reserve_path_vfh is " << xpn_env::get_instance().xpn_reserve_path_vfh
+                                              << " but the needed size is " << total_needed);
+  }
+
+  fho.path.clear();
+  fho.path.append(m_path);
+  fho.path.append("/");
+  fho.path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<fho.path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode)<<")");
 

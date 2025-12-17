@@ -135,7 +135,7 @@ std::shared_ptr<xpn_server_comm> mpi_server_control_comm::accept ( int socket, b
 
   debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_accept] >> Begin");
   if (sendData) {
-    debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_accept] send port");
+    debug_info("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_accept] send port "<<m_port_name);
     ret = socket::send(socket, m_port_name.data(), MAX_PORT_NAME);
     if (ret < 0){
       print("[Server="<<ns::get_host_name()<<"] [MPI_SERVER_CONTROL_COMM] [mpi_server_control_comm_accept] ERROR: socket send port fails");

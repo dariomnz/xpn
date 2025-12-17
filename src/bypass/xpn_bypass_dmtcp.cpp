@@ -173,9 +173,9 @@ inline const char *skip_xpn_prefix(const char *path) {
 /**
  * File descriptors table management
  */
-static std::recursive_mutex fdstable_mutex;
-static std::unordered_set<int> fdstable;
-static std::unordered_set<int> fdstable_ckpt;
+std::recursive_mutex fdstable_mutex;
+std::unordered_set<int> fdstable;
+std::unordered_set<int> fdstable_ckpt;
 
 bool fdstable_get(int fd) {
     if (fd < 0) {
@@ -326,7 +326,7 @@ extern "C" void *malloc(size_t __size) {
     void *ptr = nullptr;
     uint64_t size = __size;
     auto &instance = XPN::ArenaAllocatorStorage::instance();
-    bool in_restart;
+    bool in_restart = false;
     if (instance.is_active()) {
         in_restart = is_in_restart();
         if (in_restart) {
@@ -598,6 +598,9 @@ extern "C" ssize_t read(int fd, void *buf, size_t nbyte) {
     return ret;
 }
 
+constexpr uint64_t ARENA_BUFFER_SIZE = 4 * 1024 * 1024;
+static uint8_t arena_buffer[ARENA_BUFFER_SIZE];
+
 extern "C" ssize_t write(int fd, const void *buf, size_t nbyte) {
     ssize_t ret = -1;
     auto &instance = XPN::ArenaAllocatorStorage::instance();
@@ -610,8 +613,6 @@ extern "C" ssize_t write(int fd, const void *buf, size_t nbyte) {
         check_xpn_init();
 
         if (instance.m_inCkpt) {
-            constexpr uint64_t ARENA_BUFFER_SIZE = 1 * 1024 * 1024;
-            thread_local uint8_t arena_buffer[ARENA_BUFFER_SIZE];
             // Activate a new arena for the write operation
             instance.activate_arena(arena_buffer, ARENA_BUFFER_SIZE);
         }

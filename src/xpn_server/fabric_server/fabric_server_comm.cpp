@@ -154,8 +154,8 @@ int64_t fabric_server_control_comm::read_operation ( xpn_server_msg &msg, int &r
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] Before lfi_wait_any");
   int completed = lfi_wait_any(requests, REQUESTS_SIZE);
 
-  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request shm  (RANK "<<lfi_request_source(shm_request.get())<<", TAG "<<shm_msg.tag<<")");
-  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request peer (RANK "<<lfi_request_source(peer_request.get())<<", TAG "<<peer_msg.tag<<")");
+  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request shm  (RANK "<<lfi_request_source(shm_request.get())<<", TAG "<<shm_msg.tag<<", SIZE "<<lfi_request_size(shm_request.get())<<", ERROR "<<lfi_strerror(lfi_request_error(shm_request.get()))<<")");
+  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] request peer (RANK "<<lfi_request_source(peer_request.get())<<", TAG "<<peer_msg.tag<<", SIZE "<<lfi_request_size(peer_request.get())<<", ERROR "<<lfi_strerror(lfi_request_error(peer_request.get()))<<")");
   if (completed == 0){
     rank_client_id = lfi_request_source(shm_request.get());
     tag_client_id  = shm_msg.tag;
@@ -182,7 +182,7 @@ int64_t fabric_server_control_comm::read_operation ( xpn_server_msg &msg, int &r
     return -1;
   }
 
-  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] read (RANK "<<rank_client_id<<", TAG "<<tag_client_id<<") = "<<ret);
+  debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] read (RANK "<<rank_client_id<<", TAG "<<tag_client_id<<") = "<<(ret<0?lfi_strerror(ret):std::to_string(ret)));
   debug_info("[Server="<<ns::get_host_name()<<"] [FABRIC_SERVER_COMM] [fabric_server_control_comm_read_operation] << End");
 
   // Return OK

@@ -45,7 +45,8 @@ struct ArenaAllocatorStorage {
     }
     void activate_arena(uint8_t* buffer, uint64_t size);
     void reset_arena();
-    void desactivate_arena();
+    void desactivate_all_arena();
+    bool desactivate_arena();
 
     bool is_active();
     void* allocate(uint64_t size);
@@ -78,7 +79,7 @@ struct ArenaAllocatorStorage {
     uint64_t m_arena_size = 0;
     uint64_t m_arena_pos = 0;
 
-    static constexpr int MAX_PTRS = 1024;
+    static constexpr int MAX_PTRS = 8192;
     uint64_t m_n_ptrs = 0;
     void* m_ptrs[MAX_PTRS] = {};
     uint64_t m_sizes[MAX_PTRS] = {};

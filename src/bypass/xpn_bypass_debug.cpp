@@ -316,7 +316,7 @@ extern "C" int fstat(int fd, struct stat *buf) {
     int ret = -1;
     debug_info("[BYPASS] >> Begin fstat(%d, %p)", fd, buf);
     ret = NEXT_FNC(fstat)(fd, buf);
-    debug_info("[BYPASS] << NEXT_FNC(__fxstat)(%d, %d, %p) -> %d", _STAT_VER, fd, buf, ret);
+    debug_info("[BYPASS] << NEXT_FNC(fstat)(%d, %p) -> %d", fd, buf, ret);
     return ret;
 }
 #endif

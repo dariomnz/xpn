@@ -131,6 +131,7 @@ void xpn_server::one_dispatcher () {
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] read operation");
         ret = m_control_comm->read_operation(*msg, rank_client_id, tag_client_id);
         if (ret < 0) {
+            print("[XPN_SERVER] ERROR: read operation fail, mark client "<<rank_client_id<<" as disconnected");
             debug_error("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] ERROR: read operation fail mark as disconnected");
             msg->op = static_cast<int32_t>(xpn_server_ops::DISCONNECT);
             m_some_client_had_error = true;

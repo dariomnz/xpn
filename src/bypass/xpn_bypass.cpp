@@ -190,7 +190,7 @@ static std::unordered_set<int> fdstable;
 
 bool fdstable_get(int fd) {
     if (fd < 0) {
-        return fd;
+        return false;
     }
     std::unique_lock lock(fdstable_mutex);
     // debug_info("[BYPASS] Begin fdstable_get(%d)", fd);
@@ -671,7 +671,7 @@ extern "C" int fstat(int fd, struct stat *buf) {
         debug_info("[BYPASS] << xpn_fstat(%d, %p) -> %d", fd, buf, ret);
     } else {
         ret = PROXY(fstat)(fd, buf);
-        debug_info("[BYPASS] << PROXY(__fxstat)(%d, %d, %p) -> %d", _STAT_VER, fd, buf, ret);
+        debug_info("[BYPASS] << PROXY(fstat)(%d, %p) -> %d", fd, buf, ret);
     }
     return ret;
 }

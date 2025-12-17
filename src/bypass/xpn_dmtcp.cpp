@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <unordered_set>
 
 #include "base_cpp/debug.hpp"
 #include "config.h"
@@ -112,103 +113,65 @@ int get_rank() {
 //     return ckpt_dir_path;
 // }
 
-static void printEvent(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t *data) {
-    switch (event) {
-        case DMTCP_EVENT_INIT:
-            debug_info("DMTCP_EVENT_INIT");
-            break;
-        case DMTCP_EVENT_EXIT:
-            debug_info("DMTCP_EVENT_EXIT");
-            break;
-        case DMTCP_EVENT_PRE_EXEC:
-            debug_info("DMTCP_EVENT_PRE_EXEC");
-            break;
-        case DMTCP_EVENT_POST_EXEC:
-            debug_info("DMTCP_EVENT_POST_EXEC");
-            break;
-        case DMTCP_EVENT_ATFORK_PREPARE:
-            debug_info("DMTCP_EVENT_ATFORK_PREPARE");
-            break;
-        case DMTCP_EVENT_ATFORK_PARENT:
-            debug_info("DMTCP_EVENT_ATFORK_PARENT");
-            break;
-        case DMTCP_EVENT_ATFORK_CHILD:
-            debug_info("DMTCP_EVENT_ATFORK_CHILD");
-            break;
-        case DMTCP_EVENT_ATFORK_FAILED:
-            debug_info("DMTCP_EVENT_ATFORK_FAILED");
-            break;
-        case DMTCP_EVENT_VFORK_PREPARE:
-            debug_info("DMTCP_EVENT_VFORK_PREPARE");
-            break;
-        case DMTCP_EVENT_VFORK_PARENT:
-            debug_info("DMTCP_EVENT_VFORK_PARENT");
-            break;
-        case DMTCP_EVENT_VFORK_CHILD:
-            debug_info("DMTCP_EVENT_VFORK_CHILD");
-            break;
-        case DMTCP_EVENT_VFORK_FAILED:
-            debug_info("DMTCP_EVENT_VFORK_FAILED");
-            break;
-        case DMTCP_EVENT_PTHREAD_START:
-            debug_info("DMTCP_EVENT_PTHREAD_START");
-            break;
-        case DMTCP_EVENT_PTHREAD_EXIT:
-            debug_info("DMTCP_EVENT_PTHREAD_EXIT");
-            break;
-        case DMTCP_EVENT_PTHREAD_RETURN:
-            debug_info("DMTCP_EVENT_PTHREAD_RETURN");
-            break;
-        case DMTCP_EVENT_PRESUSPEND:
-            debug_info("DMTCP_EVENT_PRESUSPEND");
-            break;
-        case DMTCP_EVENT_PRECHECKPOINT:
-            debug_info("DMTCP_EVENT_PRECHECKPOINT");
-            break;
-        case DMTCP_EVENT_POSTCHECKPOINT:
-            debug_info("DMTCP_EVENT_POSTCHECKPOINT");
-            break;
-        case DMTCP_EVENT_RESUME:
-            debug_info("DMTCP_EVENT_RESUME");
-            break;
-        case DMTCP_EVENT_RESTART:
-            debug_info("DMTCP_EVENT_RESTART");
-            break;
-        case DMTCP_EVENT_RUNNING:
-            debug_info("DMTCP_EVENT_RUNNING");
-            break;
-        case DMTCP_EVENT_THREAD_RESUME:
-            debug_info("DMTCP_EVENT_THREAD_RESUME");
-            break;
-        case DMTCP_EVENT_OPEN_FD:
-            debug_info("DMTCP_EVENT_OPEN_FD");
-            break;
-        case DMTCP_EVENT_REOPEN_FD:
-            debug_info("DMTCP_EVENT_REOPEN_FD");
-            break;
-        case DMTCP_EVENT_CLOSE_FD:
-            debug_info("DMTCP_EVENT_CLOSE_FD");
-            break;
-        case DMTCP_EVENT_DUP_FD:
-            debug_info("DMTCP_EVENT_DUP_FD");
-            break;
-        case DMTCP_EVENT_VIRTUAL_TO_REAL_PATH:
-            debug_info("DMTCP_EVENT_VIRTUAL_TO_REAL_PATH '" << data->virtualToRealPath.path << "'");
-            break;
-        case DMTCP_EVENT_REAL_TO_VIRTUAL_PATH:
-            debug_info("DMTCP_EVENT_REAL_TO_VIRTUAL_PATH '" << data->realToVirtualPath.path << "'");
-            break;
-        case nDmtcpEvents:
-            debug_info("nDmtcpEvents");
-            break;
+[[maybe_unused]] static void xpnPrintEvent(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t *data) {
+    static const std::unordered_map<DmtcpEvent_t, const char *> eventNames = {
+        {DMTCP_EVENT_INIT, "DMTCP_EVENT_INIT"},
+        {DMTCP_EVENT_EXIT, "DMTCP_EVENT_EXIT"},
+        {DMTCP_EVENT_PRE_EXEC, "DMTCP_EVENT_PRE_EXEC"},
+        {DMTCP_EVENT_POST_EXEC, "DMTCP_EVENT_POST_EXEC"},
+        {DMTCP_EVENT_ATFORK_PREPARE, "DMTCP_EVENT_ATFORK_PREPARE"},
+        {DMTCP_EVENT_ATFORK_PARENT, "DMTCP_EVENT_ATFORK_PARENT"},
+        {DMTCP_EVENT_ATFORK_CHILD, "DMTCP_EVENT_ATFORK_CHILD"},
+        {DMTCP_EVENT_ATFORK_FAILED, "DMTCP_EVENT_ATFORK_FAILED"},
+        {DMTCP_EVENT_VFORK_PREPARE, "DMTCP_EVENT_VFORK_PREPARE"},
+        {DMTCP_EVENT_VFORK_PARENT, "DMTCP_EVENT_VFORK_PARENT"},
+        {DMTCP_EVENT_VFORK_CHILD, "DMTCP_EVENT_VFORK_CHILD"},
+        {DMTCP_EVENT_VFORK_FAILED, "DMTCP_EVENT_VFORK_FAILED"},
+        {DMTCP_EVENT_PTHREAD_START, "DMTCP_EVENT_PTHREAD_START"},
+        {DMTCP_EVENT_PTHREAD_EXIT, "DMTCP_EVENT_PTHREAD_EXIT"},
+        {DMTCP_EVENT_PTHREAD_RETURN, "DMTCP_EVENT_PTHREAD_RETURN"},
+        {DMTCP_EVENT_PRESUSPEND, "DMTCP_EVENT_PRESUSPEND"},
+        {DMTCP_EVENT_PRECHECKPOINT, "DMTCP_EVENT_PRECHECKPOINT"},
+        {DMTCP_EVENT_POSTCHECKPOINT, "DMTCP_EVENT_POSTCHECKPOINT"},
+        {DMTCP_EVENT_RESUME, "DMTCP_EVENT_RESUME"},
+        {DMTCP_EVENT_RESTART, "DMTCP_EVENT_RESTART"},
+        {DMTCP_EVENT_RUNNING, "DMTCP_EVENT_RUNNING"},
+        {DMTCP_EVENT_THREAD_RESUME, "DMTCP_EVENT_THREAD_RESUME"},
+        {DMTCP_EVENT_OPEN_FD, "DMTCP_EVENT_OPEN_FD"},
+        {DMTCP_EVENT_REOPEN_FD, "DMTCP_EVENT_REOPEN_FD"},
+        {DMTCP_EVENT_CLOSE_FD, "DMTCP_EVENT_CLOSE_FD"},
+        {DMTCP_EVENT_DUP_FD, "DMTCP_EVENT_DUP_FD"},
+        {DMTCP_EVENT_VIRTUAL_TO_REAL_PATH, "DMTCP_EVENT_VIRTUAL_TO_REAL_PATH"},
+        {DMTCP_EVENT_REAL_TO_VIRTUAL_PATH, "DMTCP_EVENT_REAL_TO_VIRTUAL_PATH"},
+        {nDmtcpEvents, "nDmtcpEvents"}};
+
+    auto it = eventNames.find(event);
+    if (it != eventNames.end()) {
+        if (event == DMTCP_EVENT_VIRTUAL_TO_REAL_PATH) {
+            printf("XPN PLUGIN: %s '%s'\n", it->second, data->virtualToRealPath.path);
+        } else if (event == DMTCP_EVENT_REAL_TO_VIRTUAL_PATH) {
+            printf("XPN PLUGIN: %s '%s'\n", it->second, data->realToVirtualPath.path);
+        } else {
+            printf("XPN PLUGIN: %s\n", it->second);
+        }
+    } else {
+        printf("XPN PLUGIN: Undefined DmtcpEvent_t\n");
     }
+    fflush(stdout);
 }
+
+extern std::recursive_mutex fdstable_mutex;
+extern std::unordered_set<int> fdstable;
+extern std::unordered_set<int> fdstable_ckpt;
+
+constexpr int ARENA_BUFFER_SIZE = 4 * 1024 * 1024;
+static uint8_t arena_buffer[ARENA_BUFFER_SIZE];
 
 static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t *data) {
     [[maybe_unused]] int res = 0;
     static std::chrono::time_point start = std::chrono::high_resolution_clock::now();
     // static bool wasDisconnected = false;
-    printEvent(event, data);
+    // xpnPrintEvent(event, data);
     switch (event) {
         case DMTCP_EVENT_INIT: {
             debug_info("DMTCP_EVENT_INIT");
@@ -241,10 +204,10 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             debug_info("In XPN::pre_checkpoint");
             dmtcp_global_barrier("XPN::pre_checkpoint");
 
+            setenv("XPN_RESERVE_PATH_VFH", "256", 1);
+
             auto &instance = XPN::ArenaAllocatorStorage::instance();
             instance.m_inCkpt = true;
-            constexpr int ARENA_BUFFER_SIZE = 2 * 1024 * 1024;
-            static uint8_t arena_buffer[ARENA_BUFFER_SIZE];
             // Activate a arena for all the operations in ckpt
             instance.activate_arena(arena_buffer, ARENA_BUFFER_SIZE);
 
@@ -259,7 +222,7 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
 
             auto &instance = XPN::ArenaAllocatorStorage::instance();
             instance.m_inCkpt = false;
-            instance.desactivate_arena();
+            instance.desactivate_all_arena();
 
             std::chrono::duration<double> elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
             debug_info("Time taken PRESUSPEND -> PRECHECKPOINT -> POSTCHECKPOINT: "
@@ -280,13 +243,16 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             // }
 
             debug_info("In XPN::post_checkpoint");
-            dmtcp_global_barrier("XPN::post_checkpoint");
-
+            dmtcp_local_barrier("XPN::post_checkpoint");
+            // debug_info("After XPN::post_checkpoint");
+            
             xpn_dmtcp::update_restarts();
 
+            unsetenv("XPN_RESERVE_PATH_VFH");
+
             elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
-            debug_info("Time taken xpn_checkpoint: " << std::fixed << std::setprecision(6) << elapsed_seconds.count()
-                                                     << " seconds");
+            debug_info("Time taken xpn_checkpoint for rank " << get_rank() << ": " << std::fixed << std::setprecision(6)
+                                                        << elapsed_seconds.count() << " seconds");
             debug_info("DMTCP_EVENT_POSTCHECKPOINT end = " << res);
         } break;
 
@@ -304,10 +270,19 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             debug_info("DMTCP_EVENT_RESTART");
             // In case the saved memory have the arena activated and the in_ckpt activated
             auto &instance = XPN::ArenaAllocatorStorage::instance();
-            instance.desactivate_arena();
+            instance.desactivate_all_arena();
+            {
+                std::unique_lock lock(fdstable_mutex);
+                for (auto &&fd : fdstable_ckpt) {
+                    fdstable.erase(fd);
+                }
+                fdstable_ckpt.clear();
+            }
             instance.m_inCkpt = false;
 
             xpn_dmtcp::update_restarts();
+
+            unsetenv("XPN_RESERVE_PATH_VFH");
 
             xpn_clean_connections();
             // if (wasDisconnected) {

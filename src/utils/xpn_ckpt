@@ -7,6 +7,7 @@ SCRIPT_DIR=$(dirname $(readlink -f "$0"))
 
 XPN_DMTCP_PATH=${SCRIPT_DIR}/../lib/xpn_dmtcp.so
 LFI_DMTCP_PATH=${SCRIPT_DIR}/../lib/lfi_dmtcp.so
+CKPT_TIME_DMTCP_PATH=${SCRIPT_DIR}/../lib/ckpt_time_dmtcp.so
 # echo "XPN_DMTCP_PATH: ${XPN_DMTCP_PATH}"
 # echo "LFI_DMTCP_PATH: ${LFI_DMTCP_PATH}"
 
@@ -36,9 +37,10 @@ fi
 
 # Check running mana_coordinator
 if ! mana_status &> /dev/null; then
-    echo "Launching mana_coordinator because there wasn't one."
-    mana_coordinator
+    echo "The mana_coordinator needs to be running. Execute mana_coordinator."
+    exit 1
 fi
 
-echo "mana_launch --with-plugin ${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@"
-mana_launch --with-plugin ${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@
+# set -x
+# mana_launch --with-plugin ${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@
+mana_launch --with-plugin ${CKPT_TIME_DMTCP_PATH}:${LFI_DMTCP_PATH}:${XPN_DMTCP_PATH} --ckptdir /tmp/expand/xpn/ckpt $@

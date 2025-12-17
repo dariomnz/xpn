@@ -278,13 +278,13 @@ ssize_t xpn_write ( int fd, const void *buffer, size_t size )
 {
   ssize_t ret = -1;
 
-  debug_info("[XPN_UNISTD] [xpn_write] >> Begin");
+  debug_info("[XPN_UNISTD] [xpn_write] >> Begin ("<<fd<<", "<<buffer<<", "<<size<<")");
 
   XPN_API_LOCK();
   ret = XPN::xpn_api::get_instance().write(fd, buffer, size);
   XPN_API_UNLOCK();
 
-  debug_info("[XPN_UNISTD] [xpn_write] >> End");
+  debug_info("[XPN_UNISTD] [xpn_write] >> End ("<<fd<<", "<<buffer<<", "<<size<<") = "<<ret);
 
   return ret;
 }

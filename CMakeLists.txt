@@ -14,6 +14,8 @@ add_compile_options("-D_GNU_SOURCE" "-DMPICH_SKIP_MPICXX")
 # add_compile_options("-D_GNU_SOURCE" "-DMPICH_SKIP_MPICXX" "-D_REENTRANT")
 add_compile_options("-fPIC" "-O2" "-g" "-ggdb" "-gdwarf-4" "-Wall" "-Wextra")
 
+# add_compile_options(-fsanitize=thread)
+# add_link_options(-fsanitize=thread)
 # add_compile_options(-fsanitize=address)
 # add_link_options(-fsanitize=address)
 

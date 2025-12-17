@@ -60,13 +60,19 @@ void ArenaAllocatorStorage::reset_arena() {
     m_activated_arena = true;
 }
 
-void ArenaAllocatorStorage::desactivate_arena() {
+void ArenaAllocatorStorage::desactivate_all_arena() {
+    debug_info_fmt("desactivate_all_arena");
+    while (desactivate_arena()) {
+    }
+}
+
+bool ArenaAllocatorStorage::desactivate_arena() {
     debug_info_fmt("desactivate_arena %.6f %% used", ((float)m_arena_pos / (float)m_arena_size * 100.0f));
     print_stat_usage();
     reset_stat_usage();
 
     if (m_n_stack <= 0) {
-        throw std::runtime_error("Cannot desactivate arena because there vas not a activate arena before this call");
+        return false;
     }
     m_n_stack--;
     m_arena_buffer = m_arena_buffer_stack[m_n_stack];
@@ -75,6 +81,7 @@ void ArenaAllocatorStorage::desactivate_arena() {
 
     // Activated only when there are a buffer assigned
     m_activated_arena = m_arena_buffer != nullptr;
+    return true;
 }
 
 bool ArenaAllocatorStorage::is_active() { return m_activated_arena; }
