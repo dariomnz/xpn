@@ -37,6 +37,7 @@
 #include "xpn_server/xpn_server_ops.hpp"
 
 #ifdef ENABLE_FABRIC_SERVER
+#include "lfi.h"
 #include "lfi_coll.h"
 #endif
 
@@ -330,6 +331,7 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
 
     // TODO: only support fabric
     if (m_params.srv_type != server_type::FABRIC) {
+        debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] << End server is not fabric type");
         status.ret = -1;
         comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
         return;
@@ -356,6 +358,7 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
 
     ret = lfi_group_create(hostnames_c_str.data(), hostnames_c_str.size(), &group);
     if (ret < 0) {
+        debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] << End lfi error " << lfi_strerror(ret));
         status.ret = ret;
         comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
         return;
