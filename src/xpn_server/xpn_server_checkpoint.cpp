@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 
+#include "base_cpp/fixed_task_queue.hpp"
 #include "xpn_server.hpp"
 
 namespace XPN {
@@ -180,8 +181,8 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
         int64_t chunk_size_for_split = file_size / effective_threads;
         int64_t current_offset = 0;
 
-        std::vector<std::future<int> > v_fut;
-        v_fut.reserve(effective_threads);
+        err = 0;
+        FixedTaskQueue<int> tasks;
         for (int i = 0; i < effective_threads; ++i) {
             int64_t bytes_to_copy;
 
@@ -192,20 +193,24 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
             }
 
             if (bytes_to_copy > 0) {
-                v_fut.emplace_back(worker->launch([&fs, from_fd, to_fd, current_offset, bytes_to_copy]() {
+                if (tasks.full()) {
+                    int ret = tasks.consume_one();
+                    if (ret < 0) {
+                        err -= 1;
+                    }
+                }
+                auto &task = tasks.get_next_slot();
+                worker->launch([&fs, from_fd, to_fd, current_offset, bytes_to_copy]() {
                     return checkpoint_file_chunk_task(fs, from_fd, to_fd, current_offset, bytes_to_copy);
-                }));
+                }, task);
                 current_offset += bytes_to_copy;
             }
         }
 
-        err = 0;
-        for (auto& fut : v_fut) {
-            if (fut.valid()) {
-                int ret = fut.get();
-                if (ret < 0) {
-                    err -= 1;
-                }
+        while (!tasks.empty()) {
+            int ret = tasks.consume_one();
+            if (ret < 0) {
+                err -= 1;
             }
         }
     }

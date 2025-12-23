@@ -19,24 +19,23 @@
  *
  */
 
-#include "workers_sequential.hpp"
+#pragma once
 
-namespace XPN
-{
-    workers_sequential::workers_sequential() {}
-    workers_sequential::~workers_sequential() {}
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
-    void workers_sequential::launch(FixedFunction<int()> task, TaskResult<int>& result)
-    {
-        result.init();
-        result.set_value(task());
-    }
+namespace XPN {
 
-    void workers_sequential::launch_no_future(FixedFunction<void()> task)
-    {
-        task();
-    }
+struct string_hash {
+    using is_transparent = void;
+    [[nodiscard]] size_t operator()(const char *txt) const { return std::hash<std::string_view>{}(txt); }
+    [[nodiscard]] size_t operator()(std::string_view txt) const { return std::hash<std::string_view>{}(txt); }
+    [[nodiscard]] size_t operator()(const std::string &txt) const { return std::hash<std::string>{}(txt); }
+};
 
-    void workers_sequential::wait_all() {}
-    uint32_t workers_sequential::size() const { return 1; }
-} // namespace XPN
+// This str_unordered_map permit the hash of string_view string and const char* in find
+template <typename K, typename V>
+using str_unordered_map = std::unordered_map<K, V, string_hash, std::equal_to<>>;
+}  // namespace XPN

@@ -27,6 +27,7 @@
 #include <iostream>
 
 #include "base_cpp/args.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
 #include "base_cpp/subprocess.hpp"
 #include "base_cpp/workers.hpp"
 #include "base_cpp/xpn_conf.hpp"
@@ -373,16 +374,23 @@ int xpn_controller::stop_servers(bool await) {
     int res = 0;
     debug_info("[XPN_CONTROLLER] >> Start");
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    std::vector<std::future<int>> v_res(m_servers.size());
+    int aux_res;
+    FixedTaskQueue<int> tasks;
 #ifdef DEBUG
     for (auto& srv : m_servers) {
         debug_info("Server to stop: " << srv);
     }
 #endif
 
-    int index = 0;
     for (auto& name : m_servers) {
-        v_res[index++] = worker->launch([&name, await]() {
+        if (tasks.full()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
+                res = aux_res;
+            }
+        }
+        auto &task = tasks.get_next_slot();
+        worker->launch([&name, await]() {
             debug_info("Stopping server (" << name << ")");
             int socket;
             int ret;
@@ -414,12 +422,11 @@ int xpn_controller::stop_servers(bool await) {
                 socket::close(socket);
             }
             return ret;
-        });
+        }, task);
     }
 
-    int aux_res;
-    for (auto& fut : v_res) {
-        aux_res = fut.get();
+    while (!tasks.empty()) {
+        aux_res = tasks.consume_one();
         if (aux_res < 0) {
             res = aux_res;
         }
@@ -440,10 +447,17 @@ int xpn_controller::ping_servers() {
     int res = 0;
     debug_info("[XPN_CONTROLLER] >> Start");
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    std::vector<std::future<int>> v_res(m_servers.size());
-    int index = 0;
+    int aux_res;
+    FixedTaskQueue<int> tasks;
     for (auto& name : m_servers) {
-        v_res[index++] = worker->launch([&name]() {
+        if (tasks.full()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
+                res = aux_res;
+            }
+        }
+        auto &task = tasks.get_next_slot();
+        worker->launch([&name]() {
             debug_info("Ping server (" << name << ")");
             int socket;
             int ret = -1;
@@ -470,12 +484,11 @@ int xpn_controller::ping_servers() {
             }
             socket::close(socket);
             return ret;
-        });
+        }, task);
     }
 
-    int aux_res;
-    for (auto& fut : v_res) {
-        aux_res = fut.get();
+    while (!tasks.empty()) {
+        aux_res = tasks.consume_one();
         if (aux_res < 0) {
             res = aux_res;
         }

@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <memory>
 #include <tuple>
@@ -71,23 +72,23 @@ namespace XPN
 
     public:
         // Operations 
-        virtual int nfi_open        (const std::string &path, int flags, mode_t mode, xpn_fh &fho) = 0; 
-        virtual int nfi_create      (const std::string &path, mode_t mode, xpn_fh &fho) = 0;
+        virtual int nfi_open        (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho) = 0; 
+        virtual int nfi_create      (const std::string_view &path, mode_t mode, xpn_fh &fho) = 0;
         virtual int nfi_close       (const xpn_fh &fh) = 0;
         virtual int64_t nfi_read    (const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) = 0;
         virtual int64_t nfi_write   (const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) = 0;
-        virtual int nfi_remove      (const std::string &path, bool is_async) = 0;
-        virtual int nfi_rename      (const std::string &path, const std::string &new_path) = 0;
-        virtual int nfi_getattr     (const std::string &path, struct ::stat &st) = 0;
-        virtual int nfi_setattr     (const std::string &path, struct ::stat &st) = 0;
-        virtual int nfi_mkdir       (const std::string &path, mode_t mode) = 0;
-        virtual int nfi_opendir     (const std::string &path, xpn_fh &fho) = 0;
+        virtual int nfi_remove      (const std::string_view &path, bool is_async) = 0;
+        virtual int nfi_rename      (const std::string_view &path, const std::string_view &new_path) = 0;
+        virtual int nfi_getattr     (const std::string_view &path, struct ::stat &st) = 0;
+        virtual int nfi_setattr     (const std::string_view &path, struct ::stat &st) = 0;
+        virtual int nfi_mkdir       (const std::string_view &path, mode_t mode) = 0;
+        virtual int nfi_opendir     (const std::string_view &path, xpn_fh &fho) = 0;
         virtual int nfi_readdir     (xpn_fh &fhd, struct ::dirent &entry) = 0;
         virtual int nfi_closedir    (const xpn_fh &fhd) = 0;
-        virtual int nfi_rmdir       (const std::string &path, bool is_async) = 0;
-        virtual int nfi_statvfs     (const std::string &path, struct ::statvfs &inf) = 0;
-        virtual int nfi_read_mdata  (const std::string &path, xpn_metadata &mdata) = 0;
-        virtual int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
+        virtual int nfi_rmdir       (const std::string_view &path, bool is_async) = 0;
+        virtual int nfi_statvfs     (const std::string_view &path, struct ::statvfs &inf) = 0;
+        virtual int nfi_read_mdata  (const std::string_view &path, xpn_metadata &mdata) = 0;
+        virtual int nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
 
         virtual int nfi_flush       (const char *path) = 0;
         virtual int nfi_preload     (const char *path) = 0;
@@ -109,14 +110,14 @@ namespace XPN
             message.msg_size = msg.get_size();
             std::memcpy(message.msg_buffer, &msg, msg.get_size());
 
-            std::unique_ptr<std::unique_lock<std::mutex>> lock = nullptr;
+            std::optional<std::unique_lock<std::mutex>> lock = std::nullopt;
             if (!haveResponse) {
                 if (!xpn_env::get_instance().xpn_connect && m_comm == nullptr) {
                     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
                 } else if (m_comm && m_comm->m_type == server_type::SCK) {
                     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
                     auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
-                    lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
+                    lock = std::unique_lock<std::mutex>(sck_comm->m_mutex);
                     debug_info("lock sck comm mutex");
                 }
             }
@@ -143,13 +144,13 @@ namespace XPN
             int64_t ret;
             debug_info("[NFI_XPN] [nfi_server_do_request] >> Begin");
 
-            std::unique_ptr<std::unique_lock<std::mutex>> lock = nullptr;
+            std::optional<std::unique_lock<std::mutex>> lock = std::nullopt;
             if (!xpn_env::get_instance().xpn_connect && m_comm == nullptr){
                 m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
             } else if (m_comm->m_type == server_type::SCK) {
                     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
                 auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
-                lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
+                lock = std::unique_lock<std::mutex>(sck_comm->m_mutex);
                 debug_info("lock sck comm mutex");
             }
 

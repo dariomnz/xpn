@@ -71,7 +71,7 @@ namespace XPN
         for (i = 0; i < n_serv; i++)
         {
             int64_t offset = m_mdata.m_data.block_size * i;
-            if (offset > static_cast<int64_t>(m_mdata.m_data.file_size)){
+            if (offset >= static_cast<int64_t>(m_mdata.m_data.file_size)){
                 break;
             }
             for (int j = 0; j < m_mdata.m_data.replication_level+1; j++)
@@ -292,12 +292,8 @@ namespace XPN
             XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);
             return res;
         }
-        auto& api = xpn_api::get_instance();
-        auto result = api.m_worker->launch([this, index](){
-            return this->m_part.m_data_serv[index]->nfi_open(this->m_path, O_RDWR | O_CREAT, S_IRWXU, this->m_data_vfh[index]);
-        });
 
-        res = result.get();
+        res = m_part.m_data_serv[index]->nfi_open(this->m_path, O_RDWR | O_CREAT, S_IRWXU, this->m_data_vfh[index]);
         
         XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);
         return res;
@@ -316,12 +312,8 @@ namespace XPN
             XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);
             return res;
         }
-        auto& api = xpn_api::get_instance();
-        auto result = api.m_worker->launch([this, index](){
-            return this->m_part.m_data_serv[index]->nfi_opendir(this->m_path, this->m_data_vfh[index]);
-        });
 
-        res = result.get();
+        res = m_part.m_data_serv[index]->nfi_opendir(this->m_path, this->m_data_vfh[index]);
         
         XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);
         return res;

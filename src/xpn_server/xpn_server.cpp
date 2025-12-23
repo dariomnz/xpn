@@ -24,6 +24,7 @@
 #include <vector>
 #include <string>
 #include <thread>
+#include "base_cpp/fixed_task_queue.hpp"
 #include "base_cpp/socket.hpp"
 #include "base_cpp/timer.hpp"
 #include "base_cpp/xpn_env.hpp"
@@ -85,8 +86,8 @@ void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
         }
         timer timer;
         m_worker2->launch_no_future([this, timer, comm, msg, rank_client_id, tag_client_id] () {
-            std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
-            if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); } 
+            std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
+            if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); } 
             do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
             msg_pool.release(msg);
         });
@@ -159,8 +160,8 @@ void xpn_server::one_dispatcher () {
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Worker launch");
         m_worker2->launch_no_future([this, timer, msg, rank_client_id, tag_client_id] () {
-            std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
-            if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); }
+            std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
+            if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); }
             xpn_server_comm *comm_ptr = nullptr;
             {
                 std::unique_lock l(m_clients_mutex);
@@ -225,8 +226,8 @@ void xpn_server::connectionless_dispatcher () {
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] Worker launch");
         m_worker2->launch_no_future([this, comm, timer, msg, rank_client_id, tag_client_id] () {
-            std::unique_ptr<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
-            if (xpn_env::get_instance().xpn_stats) { op_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::op_stats>>(m_stats.m_ops_stats[msg->op], timer); }
+            std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
+            if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); }
             do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
             m_control_comm_connectionless->disconnect(comm);
             msg_pool.release(msg);
@@ -260,14 +261,12 @@ void xpn_server::accept ( int connection_socket )
             for(size_t i = 0; i < THREADS; i++){
                 m_worker1->launch_no_future([this]{
                     this->one_dispatcher();
-                    return 0;
                 });
             }
         }
     }else{
         m_worker1->launch_no_future([this, comm]{
             this->dispatcher(comm);
-            return 0;
         });
     }
 }
@@ -487,11 +486,18 @@ int xpn_server::stop()
     }
     
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    std::vector<std::future<int>> v_res(srv_names.size());
-    int index = 0;
+    int aux_res;
+    FixedTaskQueue<int> tasks;
     for (auto &name : srv_names)
     {
-        v_res[index++] = worker->launch([this, &name] (){
+        if (tasks.full()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
+                res = aux_res;
+            }
+        }
+        auto &task = tasks.get_next_slot();
+        worker->launch([this, &name] (){
 
             printf(" * Stopping server (%s)\n", name.c_str());
             int socket;
@@ -534,14 +540,12 @@ int xpn_server::stop()
                 socket::close(socket);
             }
             return ret;
-        });
+        }, task);
     }
 
-    int aux_res;
-    for (auto &fut : v_res)
-    {
-        aux_res = fut.get();
-        if (aux_res < 0){
+    while (!tasks.empty()) {
+        aux_res = tasks.consume_one();
+        if (aux_res < 0) {
             res = aux_res;
         }
     }

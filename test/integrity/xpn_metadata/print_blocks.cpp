@@ -61,7 +61,7 @@ int main ( int argc, char *argv[] )
     file.m_mdata.m_data.fill(file.m_mdata);
     file.m_mdata.m_data.first_node = 0;
 
-    std::cout << file.m_mdata.to_string() << std::endl;
+    std::cout << file.m_mdata << std::endl;
 
     std::cout << file.m_mdata.to_string_blocks(blocks) << std::endl;
 

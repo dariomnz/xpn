@@ -24,6 +24,8 @@
 #include <memory>
 #include <functional>
 #include <future>
+#include "fixed_function.hpp"
+#include "task_result.hpp"
 
 namespace XPN
 {
@@ -31,7 +33,7 @@ namespace XPN
     {
         sequential = 0,
         thread_pool = 1,
-        thread_on_demand = 2
+        thread_on_demand = 2,
     };
     
     class workers
@@ -39,8 +41,8 @@ namespace XPN
     public:
         virtual ~workers() = default;
 
-        virtual std::future<int> launch(std::function<int()> task) = 0;
-        virtual void launch_no_future(std::function<void()> task) = 0;
+        virtual void launch(FixedFunction<int()> task, TaskResult<int>& result) = 0;
+        virtual void launch_no_future(FixedFunction<void()> task) = 0;
         virtual void wait_all() = 0;
         virtual uint32_t size() const = 0;
     public:

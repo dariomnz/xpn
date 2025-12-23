@@ -27,6 +27,8 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 
+#include "base_cpp/fixed_string.hpp"
+#include "base_cpp/str_unordered_map.hpp"
 #include "xpn/xpn_partition.hpp"
 #include "xpn/xpn_file_table.hpp"
 #include "xpn/xpn_rw.hpp"
@@ -81,7 +83,7 @@ namespace XPN
         xpn_api(xpn_api&&) = delete;
         // Delete move assignment operator
         xpn_api& operator=(xpn_api&&) = delete;
-        std::string check_remove_part_from_path(const std::string &path, std::string &out_path);
+        std::string_view check_remove_part_from_path(const std::string_view &path, FixedStringPath &out_path);
     public:
         static xpn_api& get_instance()
         {
@@ -89,7 +91,7 @@ namespace XPN
             return instance;
         }
     private:
-        std::unordered_map<std::string, xpn_partition> m_partitions;
+        str_unordered_map<std::string, xpn_partition> m_partitions;
         xpn_file_table m_file_table;
 
         std::mutex m_init_mutex;
@@ -132,6 +134,7 @@ namespace XPN
         int   dup2      (int fd, int fd2);
 
         // Stat api
+        int   internal_stat(xpn_file& file, struct ::stat *sb);
         int   fstat     (int fd, struct ::stat *sb);
         int   stat      (const char *path, struct ::stat *sb);
         int   chown     (const char *path,  uid_t owner,  gid_t group);
@@ -140,16 +143,17 @@ namespace XPN
         int   fchmod    (int fd,  mode_t mode);
         int   truncate  (const char *path,  int64_t length);
         int   ftruncate (int fd, int64_t length);
+        int   internal_statvfs(xpn_file& file, struct ::statvfs *buf);
         int   statvfs   (const char *path, struct ::statvfs *buf);
         int   fstatvfs  (int fd, struct ::statvfs *buf);
 
         // RW api
         int64_t read            (int fd, void *buffer, uint64_t size);
         int64_t pread           (int fd, void *buffer, uint64_t size, int64_t offset);
-        int64_t pread           (std::shared_ptr<xpn_file> file, void *buffer, uint64_t size, int64_t offset);
+        int64_t pread           (xpn_file& file, void *buffer, uint64_t size, int64_t offset);
         int64_t write           (int fd, const void *buffer, uint64_t size);
         int64_t pwrite          (int fd, const void *buffer, uint64_t size, int64_t offset);
-        int64_t pwrite          (std::shared_ptr<xpn_file> file, const void *buffer, uint64_t size, int64_t offset);
+        int64_t pwrite          (xpn_file& file, const void *buffer, uint64_t size, int64_t offset);
         int64_t   lseek           (int fd, int64_t offset, int flag);
 
         // f_file api

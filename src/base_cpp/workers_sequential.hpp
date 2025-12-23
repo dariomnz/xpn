@@ -31,8 +31,8 @@ namespace XPN
         workers_sequential();
         ~workers_sequential();
 
-        std::future<int> launch(std::function<int()> task) override;
-        void launch_no_future(std::function<void()> task) override;
+        void launch(FixedFunction<int()> task, TaskResult<int>& result) override;
+        void launch_no_future(FixedFunction<void()> task) override;
         void wait_all() override;
         uint32_t size() const override;
     };

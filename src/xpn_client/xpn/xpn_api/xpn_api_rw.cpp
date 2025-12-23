@@ -20,6 +20,7 @@
  */
 
 #include "base_cpp/debug.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
 #include "xpn/xpn_api.hpp"
 #include "xpn/xpn_rw.hpp"
 #include <iomanip>
@@ -34,75 +35,85 @@ namespace XPN
             return -1;
         }
 
-        return pread(file, buffer, size, offset);
+        return pread(*file, buffer, size, offset);
     }
 
-    int64_t xpn_api::pread(std::shared_ptr<xpn_file> file, void *buffer, uint64_t size, int64_t offset)
+    int64_t xpn_api::pread(xpn_file& file, void *buffer, uint64_t size, int64_t offset)
     {
-        XPN_DEBUG_BEGIN_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+        XPN_DEBUG_BEGIN_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
         int64_t res = 0;
 
         if (buffer == NULL){
             errno = EFAULT;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
         if (size == 0){
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        if (file->m_flags == O_WRONLY){
+        if (file.m_flags == O_WRONLY){
             errno = EBADF;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        if (file->m_type == file_type::dir){
+        if (file.m_type == file_type::dir){
             errno = EISDIR;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        xpn_rw_buffer rw_buff(*file.get(), offset, const_cast<void*>(buffer), size);
-        XPN_DEBUG("Before calculate_reads "<<rw_buff.dump());
-        rw_buff.calculate_reads(xpn_env::get_instance().xpn_group_reads_writes);
-        XPN_DEBUG("After calculate_reads "<<rw_buff.dump());
+        xpn_rw_calculator rw_calculator(file, offset, buffer, size);
 
-        std::vector<std::future<int>> v_res(rw_buff.num_ops());
-        int index = 0;
-        for (uint64_t i = 0; i < rw_buff.m_ops.size(); i++)
-        {
-            if (!rw_buff.m_ops[i].empty()){
-                res = file->initialize_vfh(i);
-                if (res < 0){
-                    break;
-                }   
-            }
-            for (auto &op : rw_buff.m_ops[i])
-            {
-                v_res[index++] = m_worker->launch([i, &file, &op](){
-                    XPN_DEBUG("Serv "<<i<<" off: "<<op.offset_serv+xpn_metadata::HEADER_SIZE<<" size: "<<op.get_size());
-                    auto ret = file->m_part.m_data_serv[i]->nfi_read(file->m_data_vfh[i], op.get_buffer(), op.offset_serv+xpn_metadata::HEADER_SIZE, op.get_size());
-                    XPN_DEBUG("nfi_read "<<ret);
-                    return ret;
-                });
-            }
-        }
+        xpn_rw_operation rw_op;
+        rw_op.server_status = xpn_rw_operation::SUCCESS;
         
         uint64_t sum = 0;
         int aux_res;
-        for (auto &fut : v_res)
-        {
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
+        FixedTaskQueue<int> tasks;
+        while(rw_op.server_status != xpn_rw_operation::END) {
+            rw_op = rw_calculator.next_read();
+            XPN_DEBUG(rw_op);
+            if (rw_op.server_status == xpn_rw_operation::END){
+                break;
+            }
+            
+            res = file.initialize_vfh(rw_op.server_status);
+            if (res < 0){
+                break;
+            }
+            if (tasks.full()) {
+                aux_res = tasks.consume_one();
+                if (aux_res < 0){
+                    res = aux_res;
+                    XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
+                    return res;
+                }
+                sum += aux_res;
+            }
+            auto &task = tasks.get_next_slot();
+            m_worker->launch([&file, rw_op]() {
+                XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
+                                  << " size: " << rw_op.buffer_size);
+                auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_read(
+                    file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
+                    rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
+                XPN_DEBUG("nfi_read " << ret);
+                return ret;
+            }, task);
+        }
+
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
             if (aux_res < 0){
                 res = aux_res;
-                XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size);
+                XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
                 return res;
             }
             sum += aux_res;
@@ -110,9 +121,7 @@ namespace XPN
 
         res = sum;
 
-        rw_buff.fix_ops_reads();
-
-        XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+        XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
         return res;
     }
 
@@ -130,7 +139,7 @@ namespace XPN
             return res;
         }
         
-        res = pread(file, buffer, size, file->m_offset);
+        res = pread(*file, buffer, size, file->m_offset);
 
         if(res > 0){
             XPN_DEBUG("Update offset " << file->m_offset << " -> " << file->m_offset + res);
@@ -149,91 +158,105 @@ namespace XPN
             return -1;
         }
 
-        return pwrite(file, buffer, size, offset);
+        return pwrite(*file, buffer, size, offset);
     }
 
-    int64_t xpn_api::pwrite(std::shared_ptr<xpn_file> file, const void *buffer, uint64_t size, int64_t offset)
+    int64_t xpn_api::pwrite(xpn_file& file, const void *buffer, uint64_t size, int64_t offset)
     {
-        XPN_DEBUG_BEGIN_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+        XPN_DEBUG_BEGIN_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
         int64_t res = 0;
 
         if (buffer == NULL){
             errno = EFAULT;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
         if (size == 0){
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        if (file->m_flags == O_RDONLY){
+        if (file.m_flags == O_RDONLY){
             errno = EBADF;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        if (file->m_type == file_type::dir){
+        if (file.m_type == file_type::dir){
             errno = EISDIR;
             res = -1;
-            XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
         }
 
-        xpn_rw_buffer rw_buff(*file.get(), offset, const_cast<void*>(buffer), size);
-        XPN_DEBUG("Before calculate_writes "<<rw_buff.dump());
-        rw_buff.calculate_writes(xpn_env::get_instance().xpn_group_reads_writes);
-        XPN_DEBUG("After calculate_writes "<<rw_buff.dump());
+        xpn_rw_calculator rw_calculator(file, offset, buffer, size);
 
-        std::vector<std::future<int>> v_res(rw_buff.num_ops());
-        int index = 0;
-        for (uint64_t i = 0; i < rw_buff.m_ops.size(); i++)
-        {
-            if (!rw_buff.m_ops[i].empty()){
-                res = file->initialize_vfh(i);
-                if (res < 0){
-                    break;
-                }
-            }
-            for (auto &op : rw_buff.m_ops[i])
-            {
-                v_res[index++] = m_worker->launch([i, &file, &op](){
-                    XPN_DEBUG("Serv "<<i<<" off: "<<op.offset_serv+xpn_metadata::HEADER_SIZE<<" size: "<<op.get_size());
-                    auto ret = file->m_part.m_data_serv[i]->nfi_write(file->m_data_vfh[i], op.get_buffer(), op.offset_serv+xpn_metadata::HEADER_SIZE, op.get_size());
-                    XPN_DEBUG("nfi_write "<<ret);
-                    return ret;
-                });
-            }
-        }
+        uint64_t intended_size=0;
+        xpn_rw_operation rw_op;
+        rw_op.server_status = xpn_rw_operation::SUCCESS;
         
         uint64_t sum = 0;
         int aux_res;
-        for (auto &fut : v_res)
-        {
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
+        FixedTaskQueue<int> tasks;
+        while(rw_op.server_status != xpn_rw_operation::END) {
+            rw_op = rw_calculator.next_write();
+            XPN_DEBUG(rw_op);
+            if (rw_op.server_status == xpn_rw_operation::END){
+                break;
+            }
+            
+            res = file.initialize_vfh(rw_op.server_status);
+            if (res < 0){
+                break;
+            }
+
+            intended_size += rw_op.buffer_size;
+            if (tasks.full()) {
+                aux_res = tasks.consume_one();
+                if (aux_res < 0){
+                    res = aux_res;
+                    XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
+                    return res;
+                }
+                sum += aux_res;
+            }
+            auto &task = tasks.get_next_slot();
+            m_worker->launch([&file, rw_op]() {
+                XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
+                                  << " size: " << rw_op.buffer_size);
+                auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_write(
+                    file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
+                    rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
+                XPN_DEBUG("nfi_write " << ret);
+                return ret;
+            }, task);
+        }
+
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
             if (aux_res < 0){
-                XPN_DEBUG_END_CUSTOM(file->m_path<<", ops: "<<rw_buff.num_ops()<<", "<<rw_buff.size());
-                return aux_res;
+                res = aux_res;
+                XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
+                return res;
             }
             sum += aux_res;
         }
 
-        if (sum != rw_buff.size()){
-            res = sum / (file->m_part.m_replication_level+1);
+        if (sum != intended_size){
+            res = sum / (file.m_part.m_replication_level+1);
         }else{
-            res = static_cast<int64_t>(rw_buff.m_size);
+            res = static_cast<int64_t>(size);
             // Update file_size in metadata
-            if ((offset+res) > static_cast<int64_t>(file->m_mdata.m_data.file_size)){
-                file->m_mdata.m_data.file_size = offset+res;
-                write_metadata(file->m_mdata, true);
+            if ((offset+res) > static_cast<int64_t>(file.m_mdata.m_data.file_size)){
+                file.m_mdata.m_data.file_size = offset+res;
+                write_metadata(file.m_mdata, true);
             }
         }
 
-        XPN_DEBUG_END_CUSTOM(file->m_path<<", "<<buffer<<", "<<size<<", "<<offset);
+        XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
         return res;
     }
 
@@ -251,7 +274,7 @@ namespace XPN
             return res;
         }
         
-        res = pwrite(file, buffer, size, file->m_offset);
+        res = pwrite(*file, buffer, size, file->m_offset);
 
         if(res > 0){
             file->m_offset += res;

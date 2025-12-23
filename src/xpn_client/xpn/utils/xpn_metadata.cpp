@@ -56,13 +56,10 @@ namespace XPN
         return master;
     }
 
-    std::string xpn_metadata::to_string(bool with_data){
-        std::stringstream out;
-        out << "Metadata of: " << m_file.m_path << std::endl;
-        if (with_data){
-            out << m_data.to_string();
-        }
-        return out.str();
+    std::ostream& operator<<(std::ostream& os, const xpn_metadata& mdata) {
+        os << "Metadata of: " << mdata.m_file.m_path << std::endl;
+        os << mdata.m_data;
+        return os;
     }
 
     std::string xpn_metadata::to_string_blocks(int blocks)

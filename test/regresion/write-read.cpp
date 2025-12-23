@@ -60,6 +60,12 @@ void run_test(int thread = 0) {
         std::cerr << "Test Failed: The written data is NOT identical to the read data." << std::endl;
         exit(EXIT_FAILURE);
     }
+
+    int ret = xpn_unlink(filename.c_str());
+    if (ret < 0) {
+        std::cerr << "Error removing file: " << filename << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
 
 int main() {
@@ -127,7 +133,7 @@ int main() {
         for (size_t i = 0; i < 12; i++) {
             threads.emplace_back(std::thread([i]() { run_test(i); }));
         }
-        for (auto &&t : threads) {
+        for (auto&& t : threads) {
             t.join();
         }
     }

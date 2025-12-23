@@ -63,29 +63,27 @@ namespace XPN
                        magic_number[1] == MAGIC_NUMBER[1] && 
                        magic_number[2] == MAGIC_NUMBER[2];
             } 
-            std::string to_string(){
-                int i;
-                std::stringstream out;
-                out <<"magic_number: " << magic_number[0] << magic_number[1] << magic_number[2] << std::endl;
-                out <<"version: " << version << std::endl;
-                out <<"type: " << type << std::endl;
-                out <<"block_size: " << block_size << std::endl;
-                out <<"file_size: " << file_size << std::endl;
-                out <<"replication_level: " << replication_level << std::endl;
-                out <<"first_node: " << first_node << std::endl;
-                out <<"distribution_policy: " << distribution_policy << std::endl;
-                out <<"data_nserv: ";
-                for(i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
-                    out << data_nserv[i] << " ";
+            friend std::ostream& operator<<(std::ostream& os, const data& d) {
+                os <<"magic_number: " << d.magic_number[0] << d.magic_number[1] << d.magic_number[2] << std::endl;
+                os <<"version: " << d.version << std::endl;
+                os <<"type: " << d.type << std::endl;
+                os <<"block_size: " << d.block_size << std::endl;
+                os <<"file_size: " << d.file_size << std::endl;
+                os <<"replication_level: " << d.replication_level << std::endl;
+                os <<"first_node: " << d.first_node << std::endl;
+                os <<"distribution_policy: " << d.distribution_policy << std::endl;
+                os <<"data_nserv: ";
+                for(int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
+                    os << d.data_nserv[i] << " ";
                 }
-                out << std::endl;
+                os << std::endl;
 
-                out <<"offsets: ";
-                for(i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
-                    out << offsets[i] << " ";
+                os <<"offsets: ";
+                for(int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
+                    os << d.offsets[i] << " ";
                 }
-                out << std::endl;
-                return out.str();
+                os << std::endl;
+                return os;
             }
         };
     public:
@@ -114,7 +112,7 @@ namespace XPN
     public:
         int master_file() const {return calculate_master(true);}
         int master_dir() const {return calculate_master(false);}
-        std::string to_string(bool with_data = true);
+        friend std::ostream& operator<<(std::ostream& os, const xpn_metadata& mdata); 
         std::string to_string_blocks(int blocks);
     };
 } // namespace XPN

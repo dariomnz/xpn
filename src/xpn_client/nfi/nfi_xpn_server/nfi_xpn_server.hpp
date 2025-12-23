@@ -35,23 +35,23 @@ namespace XPN
         nfi_xpn_server(const xpn_parser &parser) : nfi_server(parser) {}
     public:
         // Operations 
-        int nfi_open        (const std::string &path, int flags, mode_t mode, xpn_fh &fho) override;
-        int nfi_create      (const std::string &path, mode_t mode, xpn_fh &fho) override;
+        int nfi_open        (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho) override;
+        int nfi_create      (const std::string_view &path, mode_t mode, xpn_fh &fho) override;
         int nfi_close       (const xpn_fh &fh) override;
         int64_t nfi_read    (const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
         int64_t nfi_write   (const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
-        int nfi_remove      (const std::string &path, bool is_async) override;
-        int nfi_rename      (const std::string &path, const std::string &new_path) override;
-        int nfi_getattr     (const std::string &path, struct ::stat &st) override;
-        int nfi_setattr     (const std::string &path, struct ::stat &st) override;
-        int nfi_mkdir       (const std::string &path, mode_t mode) override;
-        int nfi_opendir     (const std::string &path, xpn_fh &fho) override;
+        int nfi_remove      (const std::string_view &path, bool is_async) override;
+        int nfi_rename      (const std::string_view &path, const std::string_view &new_path) override;
+        int nfi_getattr     (const std::string_view &path, struct ::stat &st) override;
+        int nfi_setattr     (const std::string_view &path, struct ::stat &st) override;
+        int nfi_mkdir       (const std::string_view &path, mode_t mode) override;
+        int nfi_opendir     (const std::string_view &path, xpn_fh &fho) override;
         int nfi_readdir     (xpn_fh &fhd, struct ::dirent &entry) override;
         int nfi_closedir    (const xpn_fh &fhd) override;
-        int nfi_rmdir       (const std::string &path, bool is_async) override;
-        int nfi_statvfs     (const std::string &path, struct ::statvfs &inf) override;
-        int nfi_read_mdata  (const std::string &path, xpn_metadata &mdata) override;
-        int nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size) override;
+        int nfi_rmdir       (const std::string_view &path, bool is_async) override;
+        int nfi_statvfs     (const std::string_view &path, struct ::statvfs &inf) override;
+        int nfi_read_mdata  (const std::string_view &path, xpn_metadata &mdata) override;
+        int nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size) override;
         int nfi_flush       (const char *path) override;
         int nfi_preload     (const char *path) override;
         int nfi_checkpoint  (const char *path) override;

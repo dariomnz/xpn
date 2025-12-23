@@ -27,12 +27,13 @@
 
 #include <xpn/xpn_partition.hpp>
 #include <xpn/xpn_metadata.hpp>
+#include "base_cpp/grow_fixed_string.hpp"
 
 namespace XPN
 {
     struct xpn_fh
     {
-        std::string path;           // url in the server   
+        GrowFixedString<128> path;  // url in the server   
         long telldir = 0;           // telldir of directory in the server when XPN_SESSION_DIR is not set
         int64_t dir = 0;            // pointer to directory in the server when XPN_SESSION_DIR set
         int fd = -1;                // file_descriptor in the server when XPN_SESSION_FILE set
@@ -52,7 +53,7 @@ namespace XPN
     class xpn_file
     {
     public:
-        xpn_file(std::string &path, const xpn_partition &part) : m_path(path), m_part(part), m_mdata(*this) 
+        xpn_file(std::string_view path, const xpn_partition &part) : m_path(path), m_part(part), m_mdata(*this) 
         {
             m_data_vfh.resize(m_part.m_data_serv.size());
         }
@@ -85,7 +86,7 @@ namespace XPN
         int  initialize_vfh_dir(int index);
 
     public:
-        std::string m_path;                 // absolute path
+        GrowFixedString<128> m_path;                 // absolute path
         file_type m_type = file_type::null; // indicate FILE or DIR
         int m_links = 0;                    // number of links that this file has
         int m_flags = 0;                    // O_RDONLY, O_WRONLY,....    

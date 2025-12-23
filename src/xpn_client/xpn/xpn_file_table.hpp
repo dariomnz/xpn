@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "base_cpp/str_unordered_map.hpp"
 #include "xpn_file.hpp"
 
 namespace XPN
@@ -66,7 +67,7 @@ namespace XPN
         std::string to_string();
 
         void clean();
-        void init_vfhs(const std::unordered_map<std::string, xpn_partition>& partitions);
+        void init_vfhs(const str_unordered_map<std::string, xpn_partition>& partitions);
         void clean_vfhs();
 
     private:

@@ -19,11 +19,35 @@
  *
  */
 
+#include "base_cpp/fixed_string.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
 #include "xpn/xpn_api.hpp"
 #include "base_cpp/xpn_path.hpp"
 
 namespace XPN
 {
+    int xpn_api::internal_stat(xpn_file &file, struct ::stat *sb) {
+        XPN_DEBUG_BEGIN_CUSTOM(file.m_path);
+        int res = 0;
+
+        if (read_metadata(file.m_mdata) < 0){
+            XPN_DEBUG_END_CUSTOM(file.m_path);
+            return -1;
+        }
+        
+        auto& server = file.m_part.m_data_serv[file.m_mdata.master_file()];
+
+        res = server->nfi_getattr(file.m_path, *sb);
+
+        // Update file_size
+        if (S_ISREG(sb->st_mode)){
+            sb->st_size = file.m_mdata.m_data.file_size;
+        }
+
+        XPN_DEBUG_END;
+        return res;
+    }
+
     int xpn_api::fstat(int fd, struct ::stat *sb)
     {
         XPN_DEBUG_BEGIN_CUSTOM(fd);
@@ -37,9 +61,7 @@ namespace XPN
             return -1;
         }
 
-        // Redirect to stat to not duplicate code
-        std::string file_path = file->m_part.m_name + "/" + file->m_path;
-        res = stat(file_path.c_str(), sb);
+        res = internal_stat(*file, sb);
 
         XPN_DEBUG_END_CUSTOM(fd);
         return res;
@@ -49,36 +71,16 @@ namespace XPN
     {
         XPN_DEBUG_BEGIN_CUSTOM(path);
         int res = 0;
-        std::string file_path;
+        FixedStringPath file_path;
         auto name_part = check_remove_part_from_path(path, file_path);
-        if (name_part.empty()){
+        if (name_part.empty()) {
             errno = ENOENT;
             XPN_DEBUG_END_CUSTOM(path);
             return -1;
         }
 
-        xpn_file file(file_path, m_partitions.at(name_part));
-
-        if (read_metadata(file.m_mdata) < 0){
-            XPN_DEBUG_END_CUSTOM(path);
-            return -1;
-        }
-        
-        auto& server = file.m_part.m_data_serv[file.m_mdata.master_file()];
-
-        auto fut = m_worker->launch([&server, &file, sb](){
-            return server->nfi_getattr(file.m_path, *sb);
-        });
-
-        res = fut.get();
-
-        // Update file_size
-        if (S_ISREG(sb->st_mode)){
-            sb->st_size = file.m_mdata.m_data.file_size;
-        }
-
-        XPN_DEBUG_END;
-        return res;
+        xpn_file file(file_path, m_partitions.find(name_part)->second);
+        return internal_stat(file, sb);
     }
 
     int xpn_api::chown([[maybe_unused]] const char *path, [[maybe_unused]] uid_t owner, [[maybe_unused]] gid_t group)
@@ -135,40 +137,33 @@ namespace XPN
         return res;
     }
 
-    int xpn_api::statvfs(const char * path, struct ::statvfs *buf)
-    {
-        XPN_DEBUG_BEGIN_CUSTOM(path);
+    int xpn_api::internal_statvfs(xpn_file& file, struct ::statvfs *buf) {
+        XPN_DEBUG_BEGIN_CUSTOM(file.m_path);
         int res = 0;
 
-        std::string file_path;
-        auto name_part = check_remove_part_from_path(path, file_path);
-        if (name_part.empty()){
-            errno = ENOENT;
-            res = -1;
-            XPN_DEBUG_END_CUSTOM(path);
-            return res;
-        }
-
-        xpn_file file(file_path, m_partitions.at(name_part));
-
         auto& server = file.m_part.m_data_serv[file.m_mdata.master_file()];
-                
-        auto fut = m_worker->launch([&server, &file, buf](){
-            return server->nfi_statvfs(file.m_path, *buf);
-        });
+        
+        res = server->nfi_statvfs(file.m_path, *buf);
 
-        res = fut.get();
         if (res < 0){
-            XPN_DEBUG_END_CUSTOM(path);
+            XPN_DEBUG_END_CUSTOM(file.m_path);
             return res;
         }
 
-        std::vector<std::future<int>> v_res(file.m_part.m_data_serv.size());
+        int aux_res;
+        FixedTaskQueue<int> tasks;
         std::mutex buff_mutex;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (static_cast<int>(i) == file.m_mdata.master_file()) continue;
-            v_res[i] = m_worker->launch([i, &file, &buf, &buff_mutex](){
+            if (tasks.full()) {
+                aux_res = tasks.consume_one();
+                if (aux_res < 0) {
+                    res = aux_res;
+                }
+            }
+            auto &task = tasks.get_next_slot();
+            m_worker->launch([i, &file, &buf, &buff_mutex](){
                 struct ::statvfs aux_buf;
                 int res = file.m_part.m_data_serv[i]->nfi_statvfs(file.m_path, aux_buf);
                 std::unique_lock lock(buff_mutex);
@@ -182,18 +177,37 @@ namespace XPN
                     buf->f_favail += aux_buf.f_favail;
                 }
                 return res;
-            });
+            }, task);
         }
 
-        int aux_res;
-        for (auto &fut : v_res)
-        {
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
-            if (aux_res < 0){
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
                 res = aux_res;
             }
         }
+
+        XPN_DEBUG_END_CUSTOM(file.m_path);
+        return res;
+    }
+
+    int xpn_api::statvfs(const char * path, struct ::statvfs *buf)
+    {
+        XPN_DEBUG_BEGIN_CUSTOM(path);
+        int res = 0;
+
+        FixedStringPath file_path;
+        auto name_part = check_remove_part_from_path(path, file_path);
+        if (name_part.empty()){
+            errno = ENOENT;
+            res = -1;
+            XPN_DEBUG_END_CUSTOM(path);
+            return res;
+        }
+
+        xpn_file file(file_path, m_partitions.find(name_part)->second);
+
+        res = internal_statvfs(file, buf);
 
         XPN_DEBUG_END_CUSTOM(path);
         return res;
@@ -212,9 +226,7 @@ namespace XPN
             return -1;
         }
 
-        // Redirect to statvfs to not duplicate code
-        std::string file_path = file->m_part.m_name + "/" + file->m_path;
-        res = statvfs(file_path.c_str(), buf);
+        res = internal_statvfs(*file, buf);
 
         XPN_DEBUG_END;
         return res;

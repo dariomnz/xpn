@@ -29,7 +29,7 @@ namespace XPN
         for (uint64_t i = 0; i < m_num_threads; ++i) { 
             m_threads.emplace_back([this] { 
                 while (true) { 
-                    std::variant<std::packaged_task<int()>,std::function<void()>> task; 
+                    decltype(m_tasks)::value_type task; 
                     { 
                         std::unique_lock<std::mutex> lock(m_queue_mutex); 
                         
@@ -50,11 +50,7 @@ namespace XPN
                         m_tasks.pop(); 
                     } 
   
-                    if ( auto *p_task = std::get_if<std::packaged_task<int()>>( &task ) ){
-                        (*p_task)();
-                    }else if ( auto *f_task = std::get_if<std::function<void()>>( &task ) ){
-                        (*f_task)();
-                    }
+                    task();
 
                     {
                         std::unique_lock<std::mutex> lock(m_wait_mutex); 
@@ -74,9 +70,9 @@ namespace XPN
         { 
             std::unique_lock<std::mutex> lock(m_queue_mutex); 
             m_stop = true; 
+            m_cv.notify_all();
         } 
   
-        m_cv.notify_all(); 
   
         for (auto& thread : m_threads) { 
             thread.join(); 
@@ -87,9 +83,8 @@ namespace XPN
         return m_num_threads;
     }
 
-    std::future<int> workers_pool::launch(std::function<int()> task)
+    void workers_pool::launch(FixedFunction<int()> task, TaskResult<int>& result)
     {
-        std::future<int> result;
         {
             std::unique_lock<std::mutex> lock(m_full_mutex);
             
@@ -99,22 +94,21 @@ namespace XPN
         }
         {
             std::unique_lock<std::mutex> lock(m_queue_mutex);
-            
-            std::packaged_task<int()> p_task(task);
+            result.init();
+            auto wrapper = [task = std::move(task), &result]() mutable {
+                result.set_value(task());
+            };      
 
-            result = p_task.get_future();
-
-            m_tasks.emplace(std::move(p_task)); 
+            m_tasks.emplace(std::move(wrapper)); 
         }
         {
             std::unique_lock<std::mutex> lock(m_wait_mutex);
             m_wait++;
-        } 
+        }
         m_cv.notify_one();
-        return result;
     }
 
-    void workers_pool::launch_no_future(std::function<void()> task)
+    void workers_pool::launch_no_future(FixedFunction<void()> task)
     {
         {
             std::unique_lock<std::mutex> lock(m_full_mutex);

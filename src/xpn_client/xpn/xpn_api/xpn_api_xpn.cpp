@@ -155,7 +155,7 @@ int xpn_api::get_block_locality(char *path, int64_t offset, int *url_c, char **u
     int64_t local_offset;
     int serv;
 
-    std::string file_path;
+    FixedStringPath file_path;
     auto part_name = check_remove_part_from_path(path, file_path);
     if (part_name.empty()) {
         errno = ENOENT;
@@ -163,7 +163,7 @@ int xpn_api::get_block_locality(char *path, int64_t offset, int *url_c, char **u
         return -1;
     }
 
-    xpn_file file(file_path, m_partitions.at(part_name));
+    xpn_file file(file_path, m_partitions.find(part_name)->second);
 
     res = read_metadata(file.m_mdata);
 

@@ -20,6 +20,7 @@
  */
 
 #include "nfi_xpn_server.hpp"
+#include "base_cpp/fixed_string.hpp"
 #include "xpn/xpn_file.hpp"
 #include "base_cpp/debug.hpp"
 #include "base_cpp/xpn_env.hpp"
@@ -35,7 +36,7 @@ namespace XPN
 {
 
 // File API
-int nfi_xpn_server::nfi_open (const std::string &path, int flags, mode_t mode, xpn_fh &fho)
+int nfi_xpn_server::nfi_open (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -51,6 +52,7 @@ int nfi_xpn_server::nfi_open (const std::string &path, int flags, mode_t mode, x
   }
 
   fho.path.clear();
+  fho.path.reserve(total_needed);
   fho.path.append(m_path);
   fho.path.append("/");
   fho.path.append(path);
@@ -80,7 +82,7 @@ int nfi_xpn_server::nfi_open (const std::string &path, int flags, mode_t mode, x
   return status.ret;
 }
 
-int nfi_xpn_server::nfi_create (const std::string &path, mode_t mode, xpn_fh &fho)
+int nfi_xpn_server::nfi_create (const std::string_view &path, mode_t mode, xpn_fh &fho)
 {
   //NOTE: actualy creat is not in use, it use like POSIX open(path, O_WRONLY|O_CREAT|O_TRUNC, mode);
   return nfi_open(path, O_WRONLY|O_CREAT|O_TRUNC, mode, fho);
@@ -143,13 +145,13 @@ int64_t nfi_xpn_server::nfi_read (const xpn_fh &fh, char *buffer, int64_t offset
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_read] nfi_xpn_server_read("<<fh.path<<", "<<offset<<", "<<size<<")");
 
-  std::unique_ptr<std::unique_lock<std::mutex>> lock = nullptr;
+  std::optional<std::unique_lock<std::mutex>> lock = std::nullopt;
   if (!xpn_env::get_instance().xpn_connect && m_comm == nullptr){
     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
   }else if (m_comm->m_type == server_type::SCK) {
     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
     auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
-    lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
+    lock = std::unique_lock<std::mutex>(sck_comm->m_mutex);
     debug_info("lock sck comm mutex");
   }
 
@@ -250,13 +252,13 @@ int64_t nfi_xpn_server::nfi_write (const xpn_fh &fh, const char *buffer, int64_t
     return 0;
   }
 
-  std::unique_ptr<std::unique_lock<std::mutex>> lock = nullptr;
+  std::optional<std::unique_lock<std::mutex>> lock = std::nullopt;
   if (!xpn_env::get_instance().xpn_connect && m_comm == nullptr){
     m_comm = m_control_comm_connectionless->connect(m_server, m_connectionless_port);
   }else if (m_comm->m_type == server_type::SCK) {
     // Necessary lock, because the nfi sck comm is not reentrant in the communication part 
     auto sck_comm = static_cast<nfi_sck_server_comm*>(m_comm.get());
-    lock = std::make_unique<std::unique_lock<std::mutex>>(sck_comm->m_mutex);
+    lock = std::unique_lock<std::mutex>(sck_comm->m_mutex);
     debug_info("lock sck comm mutex");
   }
 
@@ -347,7 +349,7 @@ int64_t nfi_xpn_server::nfi_write (const xpn_fh &fh, const char *buffer, int64_t
   return ret;
 }
 
-int nfi_xpn_server::nfi_remove (const std::string &path, bool is_async)
+int nfi_xpn_server::nfi_remove (const std::string_view &path, bool is_async)
 {
   int ret;
   st_xpn_server_path msg;
@@ -355,7 +357,10 @@ int nfi_xpn_server::nfi_remove (const std::string &path, bool is_async)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_remove] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_remove] nfi_xpn_server_remove("<<srv_path<<", "<<is_async<<")");
 
@@ -380,7 +385,7 @@ int nfi_xpn_server::nfi_remove (const std::string &path, bool is_async)
   return ret;
 }
 
-int nfi_xpn_server::nfi_rename (const std::string &path, const std::string &new_path)
+int nfi_xpn_server::nfi_rename (const std::string_view &path, const std::string_view &new_path)
 {
   int ret;
   st_xpn_server_rename msg;
@@ -388,8 +393,14 @@ int nfi_xpn_server::nfi_rename (const std::string &path, const std::string &new_
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_rename] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
-  std::string new_srv_path = m_path + "/" + new_path;
+  FixedStringPath srv_path;
+  srv_path.append( m_path);
+  srv_path.append( "/");
+  srv_path.append( path);
+  FixedStringPath new_srv_path;
+  new_srv_path.append( m_path);
+  new_srv_path.append( "/");
+  new_srv_path.append( new_path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_rename] nfi_xpn_server_rename("<<srv_path<<", "<<new_srv_path<<")");
 
@@ -413,7 +424,7 @@ int nfi_xpn_server::nfi_rename (const std::string &path, const std::string &new_
   return ret;
 }
 
-int nfi_xpn_server::nfi_getattr (const std::string &path, struct ::stat &st)
+int nfi_xpn_server::nfi_getattr (const std::string_view &path, struct ::stat &st)
 {
   int ret;
   st_xpn_server_path msg;
@@ -421,7 +432,10 @@ int nfi_xpn_server::nfi_getattr (const std::string &path, struct ::stat &st)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_getattr] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_getattr] nfi_xpn_server_getattr("<<srv_path<<")");
 
@@ -444,7 +458,7 @@ int nfi_xpn_server::nfi_getattr (const std::string &path, struct ::stat &st)
   return ret;
 }
 
-int nfi_xpn_server::nfi_setattr ([[maybe_unused]] const std::string &path, [[maybe_unused]] struct ::stat &st)
+int nfi_xpn_server::nfi_setattr ([[maybe_unused]] const std::string_view &path, [[maybe_unused]] struct ::stat &st)
 {
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_setattr] >> Begin");
 
@@ -456,7 +470,7 @@ int nfi_xpn_server::nfi_setattr ([[maybe_unused]] const std::string &path, [[may
 }
 
 // Directories API
-int nfi_xpn_server::nfi_mkdir(const std::string &path, mode_t mode)
+int nfi_xpn_server::nfi_mkdir(const std::string_view &path, mode_t mode)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -464,7 +478,10 @@ int nfi_xpn_server::nfi_mkdir(const std::string &path, mode_t mode)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_mkdir] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_mkdir] nfi_xpn_server_mkdir("<<srv_path<<")");
 
@@ -492,7 +509,7 @@ int nfi_xpn_server::nfi_mkdir(const std::string &path, mode_t mode)
   return ret;
 }
 
-int nfi_xpn_server::nfi_opendir(const std::string &path, xpn_fh &fho)
+int nfi_xpn_server::nfi_opendir(const std::string_view &path, xpn_fh &fho)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -500,7 +517,13 @@ int nfi_xpn_server::nfi_opendir(const std::string &path, xpn_fh &fho)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_opendir] >> Begin");
 
-  fho.path = m_path + "/" + path;
+  size_t total_needed = m_path.size() + 1 + path.size();
+
+  fho.path.clear();
+  fho.path.reserve(total_needed);
+  fho.path.append(m_path);
+  fho.path.append("/");
+  fho.path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_opendir] nfi_xpn_server_opendir("<<fho.path<<")");
   
@@ -597,7 +620,7 @@ int nfi_xpn_server::nfi_closedir (const xpn_fh &fhd)
   }
 }
 
-int nfi_xpn_server::nfi_rmdir(const std::string &path, bool is_async)
+int nfi_xpn_server::nfi_rmdir(const std::string_view &path, bool is_async)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -605,7 +628,10 @@ int nfi_xpn_server::nfi_rmdir(const std::string &path, bool is_async)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_rmdir] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_rmdir] nfi_xpn_server_rmdir("<<srv_path<<")");
 
@@ -632,7 +658,7 @@ int nfi_xpn_server::nfi_rmdir(const std::string &path, bool is_async)
   return ret;
 }
 
-int nfi_xpn_server::nfi_statvfs(const std::string &path, struct ::statvfs &inf)
+int nfi_xpn_server::nfi_statvfs(const std::string_view &path, struct ::statvfs &inf)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -640,7 +666,10 @@ int nfi_xpn_server::nfi_statvfs(const std::string &path, struct ::statvfs &inf)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_statvfs] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_statvfs] nfi_xpn_server_statvfs("<<srv_path<<")");
 
@@ -663,7 +692,7 @@ int nfi_xpn_server::nfi_statvfs(const std::string &path, struct ::statvfs &inf)
   return ret;
 }
 
-int nfi_xpn_server::nfi_read_mdata (const std::string &path, xpn_metadata &mdata)
+int nfi_xpn_server::nfi_read_mdata (const std::string_view &path, xpn_metadata &mdata)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -671,7 +700,10 @@ int nfi_xpn_server::nfi_read_mdata (const std::string &path, xpn_metadata &mdata
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_read_mdata] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append( m_path);
+  srv_path.append( "/");
+  srv_path.append( path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_read_mdata] nfi_xpn_server_read_mdata("<<srv_path<<")");
 
@@ -694,19 +726,22 @@ int nfi_xpn_server::nfi_read_mdata (const std::string &path, xpn_metadata &mdata
   return ret;
 }
 
-int nfi_xpn_server::nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size)
+int nfi_xpn_server::nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size)
 {
   int ret;
   struct st_xpn_server_status req = {};
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_write_mdata] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
   
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_write_mdata] nfi_xpn_server_write_mdata("<<srv_path<<")");
 
   if (only_file_size){
-    struct st_xpn_server_write_mdata_file_size msg;
+    struct st_xpn_server_write_mdata_file_size msg = {};
     uint64_t length = srv_path.copy(msg.path.path, srv_path.size());
     msg.path.path[length] = '\0';
     msg.path.size = length + 1;
@@ -714,7 +749,7 @@ int nfi_xpn_server::nfi_write_mdata (const std::string &path, const xpn_metadata
     // ret = nfi_do_request(xpn_server_ops::WRITE_MDATA_FILE_SIZE, msg, req);
     ret = nfi_write_operation(xpn_server_ops::WRITE_MDATA_FILE_SIZE, msg, false);
   }else{
-    struct st_xpn_server_write_mdata msg;
+    struct st_xpn_server_write_mdata msg = {};
     uint64_t length = srv_path.copy(msg.path.path, srv_path.size());
     msg.path.path[length] = '\0';
     msg.path.size = length + 1;

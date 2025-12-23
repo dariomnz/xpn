@@ -20,6 +20,7 @@
  */
 
 #include "nfi_local.hpp"
+#include "base_cpp/fixed_string.hpp"
 #include "base_cpp/xpn_env.hpp"
 #include "xpn/xpn_file.hpp"
 #include "xpn_server/xpn_server_ops.hpp"
@@ -30,7 +31,7 @@ namespace XPN
 {
 
 // File API
-int nfi_local::nfi_open (const std::string &path, int flags, mode_t mode, xpn_fh &fho)
+int nfi_local::nfi_open (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho)
 {
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] >> Begin");
@@ -43,6 +44,7 @@ int nfi_local::nfi_open (const std::string &path, int flags, mode_t mode, xpn_fh
   }
 
   fho.path.clear();
+  fho.path.reserve(total_needed);
   fho.path.append(m_path);
   fho.path.append("/");
   fho.path.append(path);
@@ -68,7 +70,7 @@ int nfi_local::nfi_open (const std::string &path, int flags, mode_t mode, xpn_fh
   return 0;
 }
 
-int nfi_local::nfi_create (const std::string &path, mode_t mode, xpn_fh &fho)
+int nfi_local::nfi_create (const std::string_view &path, mode_t mode, xpn_fh &fho)
 {
   //NOTE: actualy creat is not in use, it use like POSIX open(path, O_WRONLY|O_CREAT|O_TRUNC, mode);
   return nfi_local::nfi_open(path, O_WRONLY|O_CREAT|O_TRUNC, mode, fho);
@@ -196,13 +198,16 @@ cleanup_nfi_local_write:
   return ret;
 }
 
-int nfi_local::nfi_remove (const std::string &path, [[maybe_unused]] bool is_async)
+int nfi_local::nfi_remove (const std::string_view &path, [[maybe_unused]] bool is_async)
 {
   int ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_remove] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_remove] nfi_local_remove("<<srv_path<<")");
   ret = PROXY(unlink)(srv_path.c_str());
@@ -218,14 +223,20 @@ int nfi_local::nfi_remove (const std::string &path, [[maybe_unused]] bool is_asy
   return ret;
 }
 
-int nfi_local::nfi_rename (const std::string &path, const std::string &new_path)
+int nfi_local::nfi_rename (const std::string_view &path, const std::string_view &new_path)
 {
   int  ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_rename] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
-  std::string new_srv_path = m_path + "/" + new_path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
+  FixedStringPath new_srv_path;
+  new_srv_path.append(m_path);
+  new_srv_path.append("/");
+  new_srv_path.append(new_path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_rename] nfi_local_rename("<<srv_path<<", "<<new_srv_path<<")");
 
@@ -242,13 +253,16 @@ int nfi_local::nfi_rename (const std::string &path, const std::string &new_path)
   return ret;
 }
 
-int nfi_local::nfi_getattr (const std::string &path, struct ::stat &st)
+int nfi_local::nfi_getattr (const std::string_view &path, struct ::stat &st)
 {
   int  ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_getattr] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_getattr] nfi_local_getattr("<<srv_path<<")");
   #ifdef _STAT_VER
@@ -269,7 +283,7 @@ int nfi_local::nfi_getattr (const std::string &path, struct ::stat &st)
   return ret;
 }
 
-int nfi_local::nfi_setattr ([[maybe_unused]] const std::string &path, [[maybe_unused]] struct ::stat &st)
+int nfi_local::nfi_setattr ([[maybe_unused]] const std::string_view &path, [[maybe_unused]] struct ::stat &st)
 {
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_setattr] >> Begin");
 
@@ -281,13 +295,16 @@ int nfi_local::nfi_setattr ([[maybe_unused]] const std::string &path, [[maybe_un
 }
 
 // Directories API
-int nfi_local::nfi_mkdir(const std::string &path, mode_t mode)
+int nfi_local::nfi_mkdir(const std::string_view &path, mode_t mode)
 {
   int    ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_mkdir] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_mkdir] nfi_local_mkdir("<<srv_path<<")");
   ret = PROXY(mkdir)(srv_path.c_str(), mode);
@@ -304,13 +321,19 @@ int nfi_local::nfi_mkdir(const std::string &path, mode_t mode)
   return ret;
 }
 
-int nfi_local::nfi_opendir(const std::string &path, xpn_fh &fho)
+int nfi_local::nfi_opendir(const std::string_view &path, xpn_fh &fho)
 {
   DIR* s;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] >> Begin");
 
-  fho.path = m_path + "/" + path;
+  size_t total_needed = m_path.size() + 1 + path.size();
+
+  fho.path.clear();
+  fho.path.reserve(total_needed);
+  fho.path.append(m_path);
+  fho.path.append("/");
+  fho.path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<fho.path<<")");
 
@@ -399,13 +422,16 @@ int nfi_local::nfi_closedir (const xpn_fh &fhd)
   }
 }
 
-int nfi_local::nfi_rmdir(const std::string &path, [[maybe_unused]] bool is_async)
+int nfi_local::nfi_rmdir(const std::string_view &path, [[maybe_unused]] bool is_async)
 {
   int ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_rmdir] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_rmdir] nfi_local_rmdir("<<srv_path<<")");
 
@@ -422,12 +448,15 @@ int nfi_local::nfi_rmdir(const std::string &path, [[maybe_unused]] bool is_async
   return 0;
 }
 
-int nfi_local::nfi_statvfs(const std::string &path, struct ::statvfs &inf)
+int nfi_local::nfi_statvfs(const std::string_view &path, struct ::statvfs &inf)
 {
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_statfs] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_statfs] nfi_local_statvfs("<<srv_path<<")");
 
@@ -439,13 +468,16 @@ int nfi_local::nfi_statvfs(const std::string &path, struct ::statvfs &inf)
   return ret;
 }
 
-int nfi_local::nfi_read_mdata (const std::string &path, xpn_metadata &mdata)
+int nfi_local::nfi_read_mdata (const std::string_view &path, xpn_metadata &mdata)
 {
   int ret, fd;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read_mdata] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   mdata.m_data = {};
 
@@ -475,13 +507,16 @@ int nfi_local::nfi_read_mdata (const std::string &path, xpn_metadata &mdata)
   return ret;
 }
 
-int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::data &mdata, bool only_file_size)
+int nfi_local::nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size)
 {
   int ret, fd;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] >> Begin");
 
-  std::string srv_path = m_path + "/" + path;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write_mdata] nfi_local_write_mdata("<<srv_path<<")");
 
@@ -511,7 +546,7 @@ int nfi_local::nfi_write_mdata (const std::string &path, const xpn_metadata::dat
       
       PROXY(close)(fd); //TODO: think if necesary check error in close
     }else{
-      struct st_xpn_server_write_mdata_file_size msg;
+      struct st_xpn_server_write_mdata_file_size msg = {};
       uint64_t length = srv_path.copy(msg.path.path, srv_path.size());
       msg.path.path[length] = '\0';
       msg.path.size = length + 1;

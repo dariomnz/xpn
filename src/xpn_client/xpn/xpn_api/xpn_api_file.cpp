@@ -20,6 +20,7 @@
  */
 
 #include "base_cpp/debug.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
 #include "xpn/xpn_api.hpp"
 
 #include <fcntl.h>
@@ -28,21 +29,24 @@
 
 namespace XPN
 {
-    std::string xpn_api::check_remove_part_from_path(const std::string& path, std::string& out_path)
+    std::string_view xpn_api::check_remove_part_from_path(const std::string_view& path, FixedStringPath& out_path)
     {
-        std::string_view name_part_sv = xpn_path::get_first_dir(path);
-        std::string name_part(name_part_sv);
+        std::string_view name_part = xpn_path::get_first_dir(path);
         // XPN_DEBUG("First dir "<<name_part);
         auto it = m_partitions.find(name_part);
-        if (it == m_partitions.end())
-        {
+        if (it == m_partitions.end()) {
             return {};
         }
 
-        out_path = xpn_path::remove_first_dir(path);
+        auto first_dir = xpn_path::remove_first_dir(path);
+        out_path.clear();
 
-        if (out_path[0] != '/'){
-            out_path = cwd + '/' + out_path;
+        if (!first_dir.empty() && first_dir[0] != '/') {
+            out_path.append(cwd);
+            out_path.append("/");
+            out_path.append(first_dir);
+        } else {
+            out_path.append(first_dir);
         }
 
         return name_part;
@@ -53,7 +57,7 @@ namespace XPN
         XPN_DEBUG_BEGIN_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
         int res = 0;
 
-        std::string file_path;
+        FixedStringPath file_path;
         auto part_name = check_remove_part_from_path(path, file_path);
         if (part_name.empty()){
             errno = ENOENT;
@@ -61,10 +65,9 @@ namespace XPN
             return -1;
         }
 
-        std::shared_ptr<xpn_file> file = std::make_shared<xpn_file>(file_path, m_partitions.at(part_name));
+        std::shared_ptr<xpn_file> file = std::make_shared<xpn_file>(file_path, m_partitions.find(part_name)->second);
 
-        if ((O_DIRECTORY != (flags & O_DIRECTORY)))
-        {
+        if ((O_DIRECTORY != (flags & O_DIRECTORY))) {
             res = read_metadata(file->m_mdata);
             if (res < 0 && O_CREAT != (flags & O_CREAT)){
                 XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
@@ -76,49 +79,47 @@ namespace XPN
             }
         }
 
-        if ((O_CREAT == (flags & O_CREAT))){
-
-            std::vector<std::future<int>> v_res(file->m_part.m_data_serv.size());
-            for (uint64_t i = 0; i < file->m_part.m_data_serv.size(); i++)
-            {
+        if ((O_CREAT == (flags & O_CREAT))) {
+            int aux_res;
+            FixedTaskQueue<int> tasks;
+            for (uint64_t i = 0; i < file->m_part.m_data_serv.size(); i++) {
                 auto& serv = file->m_part.m_data_serv[i];
                 if (file->exist_in_serv(i)){
-                    v_res[i] = m_worker->launch([i, &serv, &file, flags, mode](){
+                    if (tasks.full()) {
+                        aux_res = tasks.consume_one();
+                        if (aux_res < 0) {
+                            res = aux_res;
+                            XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
+                            return res;
+                        }
+                    }
+                    auto &task = tasks.get_next_slot();
+                    m_worker->launch([i, &serv, &file, flags, mode](){
                         return serv->nfi_open(file->m_path, flags, mode, file->m_data_vfh[i]);
-                    });
+                    }, task);
                 }
             }
 
-            int aux_res;
-            for (auto &fut : v_res)
-            {
-                if (!fut.valid()) continue;
-                aux_res = fut.get();
-                if (aux_res < 0)
-                {
+            
+            while (!tasks.empty()) {
+                aux_res = tasks.consume_one();
+                if (aux_res < 0) {
                     res = aux_res;
                     XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
                     return res;
                 }
             }
 
-            if ((O_DIRECTORY != (flags & O_DIRECTORY)))
-            {
+            if ((O_DIRECTORY != (flags & O_DIRECTORY))) {
                 write_metadata(file->m_mdata, false);
             }
         }else{
             int master_file = file->m_mdata.master_file();
-            std::future<int> fut;
             if ((O_DIRECTORY == (flags & O_DIRECTORY))){
-                fut = m_worker->launch([&file, master_file](){
-                    return file->m_part.m_data_serv[master_file]->nfi_opendir(file->m_path, file->m_data_vfh[master_file]);
-                });
+                res = file->m_part.m_data_serv[master_file]->nfi_opendir(file->m_path, file->m_data_vfh[master_file]);
             }else{
-                fut = m_worker->launch([&file, master_file, flags, mode](){
-                    return file->m_part.m_data_serv[master_file]->nfi_open(file->m_path, flags, mode, file->m_data_vfh[master_file]);
-                });
+                res = file->m_part.m_data_serv[master_file]->nfi_open(file->m_path, flags, mode, file->m_data_vfh[master_file]);
             }
-            res = fut.get();
             if (res < 0) {
                 XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
                 return res;
@@ -162,19 +163,25 @@ namespace XPN
         }
 
         if (file->m_links == 0) {
-            std::vector<std::future<int>> v_res(file->m_data_vfh.size());
+            int aux_res;
+            FixedTaskQueue<int> tasks;
             for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
                 if (file->m_data_vfh[i].fd != -1) {
-                    v_res[i] = m_worker->launch([i, &file]() { 
+                    if (tasks.full()) {
+                        aux_res = tasks.consume_one();
+                        if (aux_res < 0) {
+                            res = aux_res;
+                        }
+                    }
+                    auto &task = tasks.get_next_slot();
+                    m_worker->launch([i, &file]() { 
                         return file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]); 
-                    });
+                    }, task);
                 }
             }
 
-            int aux_res;
-            for (auto &fut : v_res) {
-                if (!fut.valid()) continue;
-                aux_res = fut.get();
+            while (!tasks.empty()) {
+                aux_res = tasks.consume_one();
                 if (aux_res < 0) {
                     res = aux_res;
                 }
@@ -194,7 +201,7 @@ namespace XPN
         XPN_DEBUG_BEGIN_CUSTOM(path);
         int res = 0;
 
-        std::string file_path;
+        FixedStringPath file_path;
         auto part_name = check_remove_part_from_path(path, file_path);
         if (part_name.empty()){
             errno = ENOENT;
@@ -202,34 +209,37 @@ namespace XPN
             return -1;
         }
 
-        xpn_file file(file_path, m_partitions.at(part_name));
+        xpn_file file(file_path, m_partitions.find(part_name)->second);
 
         res = read_metadata(file.m_mdata);
         if (res < 0){
             XPN_DEBUG_END_CUSTOM(path);
             return res;
         }
-
-        std::vector<std::future<int>> v_res(file.m_part.m_data_serv.size());
+        res = 0;
+        int aux_res;
+        FixedTaskQueue<int> tasks;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (file.exist_in_serv(i)){
-                v_res[i] = m_worker->launch([i, &file](){
+                if (tasks.full()) {
+                    aux_res = tasks.consume_one();
+                    if (aux_res < 0) {
+                        res = aux_res;
+                    }
+                }
+                auto &task = tasks.get_next_slot();
+                m_worker->launch([i, &file](){
                     // Always wait and not async because it can fail in other ways
                     return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
                     // v_res[i] = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
-                });
+                }, task);
             }
         }
         
-        res = 0;
-        int aux_res;
-        for (auto &fut : v_res)
-        {   
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
-            if (aux_res < 0)
-            {
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
                 res = aux_res;
             }
         }
@@ -242,14 +252,14 @@ namespace XPN
     {
         XPN_DEBUG_BEGIN_CUSTOM(path<<", "<<newpath);
         int res = 0;
-        std::string file_path;
+        FixedStringPath file_path;
         auto part_name = check_remove_part_from_path(path, file_path);
         if (part_name.empty()){
             errno = ENOENT;
             XPN_DEBUG_END_CUSTOM(path<<", "<<newpath);
             return -1;
         }
-        std::string new_file_path;
+        FixedStringPath new_file_path;
         auto new_part_name = check_remove_part_from_path(newpath, new_file_path);
         if (new_part_name.empty()){
             errno = ENOENT;
@@ -262,8 +272,8 @@ namespace XPN
             return -1;
         }
 
-        xpn_file file(file_path, m_partitions.at(part_name));
-        xpn_file new_file(new_file_path, m_partitions.at(new_part_name));
+        xpn_file file(file_path, m_partitions.find(part_name)->second);
+        xpn_file new_file(new_file_path, m_partitions.find(new_part_name)->second);
 
         res = read_metadata(file.m_mdata);
         if (res < 0){
@@ -271,30 +281,35 @@ namespace XPN
             return res;
         }
 
-        std::vector<std::future<int>> v_res(file.m_part.m_data_serv.size());
+        int aux_res;
+        FixedTaskQueue<int> tasks;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (file.exist_in_serv(i)){
+                if (tasks.full()) {
+                    aux_res = tasks.consume_one();
+                    if (aux_res < 0) {
+                        res = aux_res;
+                    }
+                }
+                auto &task = tasks.get_next_slot();
                 if (!new_file.exist_in_serv(i)){
                     XPN_DEBUG("Remove in server "<<i);
-                    v_res[i] = m_worker->launch([i, &file](){
+                    m_worker->launch([i, &file](){
                         return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
-                    });
+                    }, task);
                 }else{
                     XPN_DEBUG("Rename in server "<<i);
-                    v_res[i] = m_worker->launch([i, &file, &new_file](){
+                    m_worker->launch([i, &file, &new_file](){
                         return file.m_part.m_data_serv[i]->nfi_rename(file.m_path, new_file.m_path);
-                    });
+                    }, task);
                 }
             }
         }
         
-        int aux_res;
-        for (auto &fut : v_res)
-        {   
-            aux_res = fut.get();
-            if (aux_res < 0)
-            {
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
                 res = aux_res;
             }
         }

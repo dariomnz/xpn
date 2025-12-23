@@ -19,6 +19,7 @@
  *
  */
 
+#include "base_cpp/fixed_task_queue.hpp"
 #include "xpn/xpn_api.hpp"
 
 #include <vector>
@@ -31,13 +32,9 @@ namespace XPN
         int res = 0;
         
         XPN_DEBUG("Read metadata from serv "<<mdata.master_file());
-        auto fut = m_worker->launch([&mdata](){
-            return mdata.m_file.m_part.m_data_serv[mdata.master_file()]->nfi_read_mdata(mdata.m_file.m_path, mdata);
-        });
+        res = mdata.m_file.m_part.m_data_serv[mdata.master_file()]->nfi_read_mdata(mdata.m_file.m_path, mdata);
 
-        res = fut.get();
-
-        XPN_DEBUG(mdata.to_string());
+        XPN_DEBUG(mdata);
 
         XPN_DEBUG_END_CUSTOM(mdata.m_file.m_path);
         return res;
@@ -50,28 +47,33 @@ namespace XPN
         if (only_file_size){
             XPN_DEBUG("New file_size: "<<mdata.m_data.file_size);
         }else{
-            XPN_DEBUG(mdata.to_string());
+            XPN_DEBUG(mdata);
         }
 
         int server = xpn_path::hash(mdata.m_file.m_path, mdata.m_file.m_part.m_data_serv.size(), true);
-        std::vector<std::future<int>> v_res(mdata.m_file.m_part.m_replication_level+1);
+        int aux_res;
+        FixedTaskQueue<int> tasks;
         for (int i = 0; i < mdata.m_file.m_part.m_replication_level+1; i++)
         {
             server = (server+i) % mdata.m_file.m_part.m_data_serv.size();
             if (mdata.m_file.m_part.m_data_serv[server]->m_error != -1){
                 XPN_DEBUG("Write metadata to serv "<<server); 
-                v_res[i] = m_worker->launch([server, &mdata, only_file_size](){
+                if (tasks.full()) {
+                    aux_res = tasks.consume_one();
+                    if (aux_res < 0) {
+                        res = aux_res;
+                    }
+                }
+                auto &task = tasks.get_next_slot();
+                m_worker->launch([server, &mdata, only_file_size](){
                     return mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_data, only_file_size);
-                });
+                }, task);
             }
         }
 
-        int aux_res;
-        for (auto &fut : v_res)
-        {
-            if (!fut.valid()) continue;
-            aux_res = fut.get();
-            if (aux_res < 0){
+        while (!tasks.empty()) {
+            aux_res = tasks.consume_one();
+            if (aux_res < 0) {
                 res = aux_res;
             }
         }

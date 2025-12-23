@@ -32,11 +32,11 @@ std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const get_time_stamp
     ::localtime_r(&actual_time, &tm);
     auto millisec = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     os << tm.tm_year + 1900 << "-";
-    os << tm.tm_mon << "-";
-    os << tm.tm_mday << " ";
-    os << tm.tm_hour << ":";
-    os << tm.tm_min << ":";
-    os << tm.tm_sec << ".";
+    os << std::setw(2) << std::setfill('0') << tm.tm_mon << "-";
+    os << std::setw(2) << std::setfill('0') << tm.tm_mday << " ";
+    os << std::setw(2) << std::setfill('0') << tm.tm_hour << ":";
+    os << std::setw(2) << std::setfill('0') << tm.tm_min << ":";
+    os << std::setw(2) << std::setfill('0') << tm.tm_sec << ".";
     os << std::setw(3) << std::setfill('0') << millisec.count();
     return os;
 }

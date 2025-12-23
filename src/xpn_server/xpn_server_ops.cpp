@@ -26,6 +26,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <cstdlib>
 #include <thread>
@@ -54,12 +55,12 @@ void xpn_server::do_operation ( xpn_server_comm &comm, const xpn_server_msg& msg
     case xpn_server_ops::OPEN_FILE:              {HANDLE_OPERATION(st_xpn_server_path_flags,             op_open);                  break;}
     case xpn_server_ops::CREAT_FILE:             {HANDLE_OPERATION(st_xpn_server_path_flags,             op_creat);                 break;}
     case xpn_server_ops::READ_FILE:              {HANDLE_OPERATION(st_xpn_server_rw,                     op_read);
-                                                  std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-                                                  if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_read_total, msg_struct->size, timer); } 
+                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat = std::nullopt;
+                                                  if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_total, msg_struct->size, timer)); } 
                                                   break;}
     case xpn_server_ops::WRITE_FILE:             {HANDLE_OPERATION(st_xpn_server_rw,                     op_write);
-                                                  std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-                                                  if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_write_total, msg_struct->size, timer); } 
+                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+                                                  if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_total, msg_struct->size, timer)); } 
                                                   break;}
     case xpn_server_ops::CLOSE_FILE:             {HANDLE_OPERATION(st_xpn_server_close,                  op_close);                 break;}
     case xpn_server_ops::RM_FILE:                {HANDLE_OPERATION(st_xpn_server_path,                   op_rm);                    break;}
@@ -216,8 +217,8 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
 
     // read data...
     {
-      std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_read_disk, to_read); } 
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, to_read)); } 
       req.size = m_filesystem->pread(fd, buffer.data(), to_read, head.offset + cont);
     }
     // if error then send as "how many bytes" -1
@@ -239,8 +240,8 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
     if (req.size > 0)
     {
       {
-        std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-        if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_write_net, to_read); } 
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, to_read)); } 
         comm.write_data(buffer.data(), req.size, rank_client_id, tag_client_id);
       }
       debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send data");
@@ -304,13 +305,13 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
 
     // read data from MPI and write into the file
     {
-      std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_read_net, to_write); } 
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_net, to_write)); } 
       comm.read_data(buffer.data(), to_write, rank_client_id, tag_client_id);
     }
     {
-      std::unique_ptr<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat = std::make_unique<xpn_stats::scope_stat<xpn_stats::io_stats>>(m_stats.m_write_disk, to_write); } 
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, to_write)); } 
       req.size = m_filesystem->pwrite(fd, buffer.data(), to_write, head.offset + cont);
     }
     if (req.size < 0)

@@ -21,55 +21,51 @@
 
 #pragma once
 
-#include "xpn/xpn_file.hpp"
-
+#include <ostream>
 #include <vector>
 
-namespace XPN
-{
-    class xpn_rw_buffer
-    {
-    public:
-        xpn_rw_buffer(xpn_file &file, int64_t offset, void *buffer, uint64_t size);
-        void calculate_reads(bool optimize);
-        void join_ops();
-        void fix_ops_reads();
-        void calculate_writes(bool optimize);
+#include "xpn/xpn_file.hpp"
 
-        uint64_t num_ops();
-        uint64_t size();
-
-        const char* dump();
-        
-        struct rw_buffer
-        {
-            char *buffer;
-            uint64_t size;
-            int64_t offset_serv;
-            int64_t offset_buff;
-            std::vector<char> v_buffer;
-            std::vector<char*> origin_buffer;
-            std::vector<uint64_t> origin_buffer_size;
-
-            bool was_move() { return !v_buffer.empty(); }
-            char * get_buffer() { return v_buffer.empty() ? buffer : v_buffer.data(); }
-            int64_t get_size() { return size; }
-
-            const char* dump();
-        };
-        std::vector<std::vector<rw_buffer>> m_ops;
-
-    private:
-        xpn_file &m_file;
-        int64_t m_offset;
-        char *m_buffer;
-    public:
-        uint64_t m_size;
+namespace XPN {
+struct xpn_rw_operation {
+    enum status_t {
+        SUCCESS = 0,
+        END = -2,
     };
-    class xpn_rw
-    {
-    public:
-        static int read_get_block (xpn_file &file, int64_t offset,                  int64_t &local_offset, int &serv);
-        static int write_get_block(xpn_file &file, int64_t offset, int replication, int64_t &local_offset, int &serv);
-    };
-} // namespace XPN
+    int64_t srv_offset = -1;
+    int32_t server_status = -1;
+
+    uint32_t buffer_size = 0;
+    void *buffer = nullptr;
+
+    friend std::ostream &operator<<(std::ostream &os, xpn_rw_operation self);
+};
+
+class xpn_rw_calculator {
+   public:
+    xpn_rw_calculator(xpn_file &file, int64_t offset, const void *buffer, uint64_t size);
+
+    static int read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv);
+
+    xpn_rw_operation next_read();
+    xpn_rw_operation next_write();
+    xpn_rw_operation next_write_one();
+
+    uint64_t max_ops_write();
+    uint64_t max_ops_read();
+
+    xpn_rw_operation recalcule_read();
+    xpn_rw_operation recalcule_write();
+
+   private:
+    xpn_file &m_file;
+    int64_t m_offset;
+    uint8_t *m_buffer;
+    uint64_t m_size;
+
+   private:
+    uint64_t m_current_size;
+    int64_t m_current_offset;
+    int32_t m_current_replication;
+};
+}  // namespace XPN

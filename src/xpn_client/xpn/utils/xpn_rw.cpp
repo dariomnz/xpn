@@ -20,252 +20,174 @@
  */
 
 #include "xpn/xpn_rw.hpp"
-#include "base_cpp/debug.hpp"
+
 #include <algorithm>
 #include <sstream>
-namespace XPN
-{
 
-    xpn_rw_buffer::xpn_rw_buffer(xpn_file &file, int64_t offset, void *buffer, uint64_t size) :
-        m_file(file), m_offset(offset), m_buffer(static_cast<char*>(buffer)), m_size(size)
-    {
-        m_ops.resize(file.m_part.m_data_serv.size());
+#include "base_cpp/debug.hpp"
+namespace XPN {
+
+std::ostream &operator<<(std::ostream &os, xpn_rw_operation self) {
+    switch (self.server_status) {
+        case xpn_rw_operation::END:
+            os << "END";
+            break;
     }
 
-    void xpn_rw_buffer::calculate_reads(bool optimize)
-    {
-        int64_t new_offset, l_offset;
-        int l_serv;
-        uint64_t l_size, count;
+    os << " srv " << self.server_status;
+    os << " off " << self.srv_offset;
 
-        new_offset = m_offset;
-        count = 0;
+    os << " buf " << self.buffer;
+    os << " size " << self.buffer_size;
 
-        while(m_size>count)
-        {
-            xpn_rw::read_get_block(m_file, new_offset, l_offset, l_serv);
+    return os;
+}
 
-            // l_size is the remaining bytes from new_offset until the end of the block
-            l_size = m_file.m_part.m_block_size -
-                (new_offset%m_file.m_part.m_block_size);
+xpn_rw_calculator::xpn_rw_calculator(xpn_file &file, int64_t offset, const void *buffer, uint64_t size)
+    : m_file(file),
+      m_offset(offset),
+      m_buffer(const_cast<uint8_t *>(static_cast<const uint8_t *>(buffer))),
+      m_size(size),
+      m_current_size(0),
+      m_current_offset(offset),
+      m_current_replication(0) {}
 
-            // If l_size > the remaining bytes to read/write, then adjust l_size
-            if ((m_size - count) < l_size)
-                l_size = m_size - count;
+xpn_rw_operation xpn_rw_calculator::next_write() {
+    xpn_rw_operation op = next_write_one();
+    if (op.server_status == xpn_rw_operation::END) return op;
 
-            xpn_rw_buffer::rw_buffer buff;
-
-            buff.offset_serv = l_offset;
-            buff.size = l_size;
-            buff.buffer = m_buffer + count;
-            buff.offset_buff = count;
-
-            m_ops[l_serv].push_back(buff);
-
-            count = l_size + count;
-            new_offset = m_offset + count;
-        }
-        
-        debug_info(dump());
-
-        if (optimize) {
-            join_ops();
-        }
+    // Need to pass to the next one if the server have error, to no make any request to that server
+    bool server_with_error = m_file.m_part.m_data_serv[op.server_status]->m_error != 0;
+    while (server_with_error) {
+        op = next_write_one();
+        if (op.server_status == xpn_rw_operation::END) return op;
+        server_with_error = m_file.m_part.m_data_serv[op.server_status]->m_error != 0;
     }
 
-    void xpn_rw_buffer::fix_ops_reads()
-    {
-        for (auto &srv_ops : m_ops)
-        {
-            for (auto &op : srv_ops)
-            {
-                if (!op.was_move()) continue;
-                uint64_t offset = 0;
-                for (uint64_t i = 0; i < op.origin_buffer.size(); i++)
-                {
-                    std::copy(op.v_buffer.begin()+offset, op.v_buffer.begin()+offset+op.origin_buffer_size[i], op.origin_buffer[i]);
-                    offset += op.origin_buffer_size[i];
-                }
-            }
-        }
+    return op;
+}
+
+xpn_rw_operation xpn_rw_calculator::next_write_one() {
+    uint64_t remaining_block_size = 0;
+    xpn_rw_operation ret;
+
+    XPN_DEBUG_BEGIN_CUSTOM("size " << m_current_size << ", "
+                                   << "offset " << m_current_offset << ", "
+                                   << "replication " << m_current_replication)
+    // Check if is
+    if (m_size <= m_current_size) {
+        ret.server_status = xpn_rw_operation::END;
+        return ret;
     }
 
-    void xpn_rw_buffer::calculate_writes(bool optimize)
-    {
-        int64_t new_offset, l_offset;
-        int l_serv;
-        uint64_t l_size = 0, count;
+    m_file.map_offset_mdata(m_current_offset, m_current_replication, ret.srv_offset, ret.server_status);
 
-        new_offset = m_offset;
-        count = 0;
+    // remaining_block_size is the remaining bytes from new_offset until the end of the block
+    remaining_block_size = m_file.m_part.m_block_size - (m_current_offset % m_file.m_part.m_block_size);
 
-        while(m_size>count)
-        {
-            for (int j = 0; j < m_file.m_part.m_replication_level + 1; j++)
-            {
-                if (xpn_rw::write_get_block(m_file, new_offset, j, l_offset, l_serv) == 0){
-                    // l_size is the remaining bytes from new_offset until the end of the block
-                    l_size = m_file.m_part.m_block_size -
-                        (new_offset%m_file.m_part.m_block_size);
-
-                    // If l_size > the remaining bytes to read/write, then adjust l_size
-                    if ((m_size - count) < l_size)
-                        l_size = m_size - count;
-
-                    xpn_rw_buffer::rw_buffer buff;
-
-                    buff.offset_serv = l_offset;
-                    buff.size = l_size;
-                    buff.buffer = m_buffer + count;
-                    buff.offset_buff = count;
-
-                    m_ops[l_serv].push_back(buff);
-                }
-            }
-            count = l_size + count;
-            new_offset = m_offset + count;
-        }
-
-        debug_info(dump());
-
-        if(optimize) {
-            join_ops();
-        }
-    }
-    
-    void xpn_rw_buffer::join_ops()
-    {
-        for (auto &serv_ops : m_ops)
-        {   
-            if (serv_ops.size() < 2) continue;
-            std::sort(serv_ops.begin(), serv_ops.end(), [](rw_buffer &a, rw_buffer &b){return a.offset_serv<b.offset_serv;});
-            for (uint64_t i = 0; i < serv_ops.size()-1;)
-            {   
-                rw_buffer &actual = serv_ops[i];
-                rw_buffer &next = serv_ops[i+1];
-                // Check if it can be unions and not be more than MAX_BUFFER_SIZE 
-                if (actual.offset_serv + static_cast<int64_t>(actual.size) == next.offset_serv && actual.size < MAX_BUFFER_SIZE){
-                    if (actual.v_buffer.empty()){
-                        actual.v_buffer.insert(actual.v_buffer.begin(), actual.buffer, actual.buffer+actual.size);
-                        actual.origin_buffer.push_back(actual.buffer);
-                        actual.origin_buffer_size.push_back(actual.size);
-                    }
-                    actual.size += next.size;
-                    actual.v_buffer.insert(actual.v_buffer.end(), next.buffer, next.buffer+next.size);
-                    actual.origin_buffer.push_back(next.buffer);
-                    actual.origin_buffer_size.push_back(next.size);
-                    serv_ops.erase(serv_ops.begin() + i + 1);
-                }else{
-                    i++;
-                }
-            }
-        }
-        
-        debug_info(dump());
+    // If remaining_block_size > the remaining bytes to read/write, then adjust remaining_block_size
+    if (remaining_block_size > (m_size - m_current_size)) {
+        remaining_block_size = m_size - m_current_size;
     }
 
-    uint64_t xpn_rw_buffer::num_ops()
-    {
-        uint64_t count = 0;
-        for (auto &srv_ops : m_ops)
-        {
-            count += srv_ops.size();
-        }
-        return count;
+    ret.buffer = m_buffer + m_current_size;
+    ret.buffer_size = remaining_block_size;
+
+    m_current_replication++;
+
+    // Addvance the offset only if the replication finish
+    if (m_current_replication > m_file.m_part.m_replication_level) {
+        m_current_replication = 0;
+        m_current_size = remaining_block_size + m_current_size;
+        m_current_offset = m_offset + m_current_size;
     }
 
-    uint64_t xpn_rw_buffer::size()
-    {
-        int count = 0;
-        for (auto &srv_ops : m_ops)
-        {
-            for (auto &op : srv_ops)
-            {
-                if (op.v_buffer.empty()){
-                    count += op.size;
-                }else{
-                    count += op.v_buffer.size();
-                }
-            }
-        }
-        return count;
+    return ret;
+}
+
+xpn_rw_operation xpn_rw_calculator::next_read() {
+    uint64_t remaining_block_size = 0;
+    xpn_rw_operation ret;
+
+    XPN_DEBUG_BEGIN_CUSTOM("size " << m_current_size << ", "
+                                   << "offset " << m_current_offset)
+    // Check if is
+    if (m_size <= m_current_size) {
+        ret.server_status = xpn_rw_operation::END;
+        return ret;
     }
 
-    const char *xpn_rw_buffer::dump() {
-        fprintf(stderr, "xpn_rw_buffer %s buf %p size %ld off %ld\n", m_file.m_path.c_str(), (void *)m_buffer, m_size,
-                m_offset);
+    read_get_block(m_file, m_current_offset, ret.srv_offset, ret.server_status);
 
-        for (uint64_t i = 0; i < m_ops.size(); i++) {
-            fprintf(stderr, "Ops in serv %ld: %ld\n", i, m_ops[i].size());
-            for (uint64_t j = 0; j < m_ops[i].size(); j++) {
-                m_ops[i][j].dump();
-            }
-        }
-        fflush(stderr);
-        return "";
+    // remaining_block_size is the remaining bytes from new_offset until the end of the block
+    remaining_block_size = m_file.m_part.m_block_size - (m_current_offset % m_file.m_part.m_block_size);
+
+    // If remaining_block_size > the remaining bytes to read/write, then adjust remaining_block_size
+    if (remaining_block_size > (m_size - m_current_size)) {
+        remaining_block_size = m_size - m_current_size;
     }
 
-    const char* xpn_rw_buffer::rw_buffer::dump()
-    {
-        fprintf(stderr, "    buf %p size %ld off_serv %ld was_move %s\n", get_buffer(), get_size(), offset_serv, (was_move() ? "true" : "false"));
-        return "";
-    }
+    ret.buffer = m_buffer + m_current_size;
+    ret.buffer_size = remaining_block_size;
 
-    /**
-     * Calculates the server and the offset (in server) for reads of the given offset (origin file) of a file with replication.
-     *
-     * @param fd[in] A file descriptor.
-     * @param offset[in] The original offset.
-     * @param serv_client[in] To optimize: the server where the client is.
-     * @param replication[in] The replication of actual offset.
-     * @param local_offset[out] The offset in the server.
-     * @param serv[out] The server in which is located the given offset.
-     *
-     * @return Returns 0 on success or -1 on error.
-     */
-    int xpn_rw::read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv)
-    {	
-        int retries = 0;
-        int replication = 0;
-        int replication_level = file.m_part.m_replication_level;
-        if (file.m_part.m_local_serv != -1){
-            do{
-                file.map_offset_mdata(offset, replication, local_offset, serv);
-                if (serv == file.m_part.m_local_serv && file.m_part.m_data_serv[serv]->m_error != -1 ){
-                    return 0;
-                }
-                replication++;
-            }while(replication <= replication_level);
-        }
-        
-        replication = 0;
-        if (replication_level != 0)
-            replication = rand() % (replication_level + 1);
+    m_current_size = remaining_block_size + m_current_size;
+    m_current_offset = m_offset + m_current_size;
 
-        do{
-            file.map_offset_mdata(offset, replication, local_offset, serv);
-            if (replication_level != 0)
-                replication = (replication + 1) % (replication_level + 1);
-            retries++;
-        }while(file.m_part.m_data_serv[serv]->m_error == -1 && retries <= replication_level);
-        
+    return ret;
+}
+
+// Calculate the read operation, with only one operation for each block for any replication level
+uint64_t xpn_rw_calculator::max_ops_read() {
+    // Avoid division by zero or size is 0
+    if (m_file.m_part.m_block_size == 0 || m_size == 0) {
         return 0;
     }
 
-    /**
-     * Calculates the server and the offset (in server) for writes of the given offset (origin file) of a file with replication.
-     *
-     * @param fd[in] A file descriptor.
-     * @param offset[in] The original offset.
-     * @param replication[in] The replication of actual offset.
-     * @param local_offset[out] The offset in the server.
-     * @param serv[out] The server in which is located the given offset.
-     *
-     * @return Returns 0 on success or -1 on error.
-     */
-    int xpn_rw::write_get_block(xpn_file &file, int64_t offset, int replication, int64_t &local_offset, int &serv)
-    {
-        file.map_offset_mdata(offset, replication, local_offset, serv);
-        return file.m_part.m_data_serv[serv]->m_error;
+    // Ceiling Division Formula: (a + b - 1) / b
+    return (m_size + (m_file.m_part.m_block_size - 1)) / m_file.m_part.m_block_size;
+}
+
+// Calculate the write operations taking into account the replication level
+uint64_t xpn_rw_calculator::max_ops_write() {
+    // The maximun is the blocks in that size in case there are remaining and multiplied by the replication level
+    return max_ops_read() * (m_file.m_part.m_replication_level + 1);
+}
+
+/**
+ * Calculates the server and the offset (in server) for reads of the given offset (origin file) of a file with
+ * replication.
+ *
+ * @param fd[in] A file descriptor.
+ * @param offset[in] The original offset.
+ * @param serv_client[in] To optimize: the server where the client is.
+ * @param local_offset[out] The offset in the server.
+ * @param serv[out] The server in which is located the given offset.
+ *
+ * @return Returns 0 on success or -1 on error.
+ */
+int xpn_rw_calculator::read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv) {
+    int retries = 0;
+    int replication = 0;
+    int replication_level = file.m_part.m_replication_level;
+    if (file.m_part.m_local_serv != -1) {
+        do {
+            file.map_offset_mdata(offset, replication, local_offset, serv);
+            if (serv == file.m_part.m_local_serv && file.m_part.m_data_serv[serv]->m_error != -1) {
+                return 0;
+            }
+            replication++;
+        } while (replication <= replication_level);
     }
-} // namespace XPN
+
+    replication = 0;
+    if (replication_level != 0) replication = rand() % (replication_level + 1);
+
+    do {
+        file.map_offset_mdata(offset, replication, local_offset, serv);
+        if (replication_level != 0) replication = (replication + 1) % (replication_level + 1);
+        retries++;
+    } while (file.m_part.m_data_serv[serv]->m_error == -1 && retries <= replication_level);
+
+    return 0;
+}
+}  // namespace XPN

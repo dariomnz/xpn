@@ -150,7 +150,7 @@ int flush_copy([[maybe_unused]] const char *entry, [[maybe_unused]] int is_file,
         debug_info("After bcast Rank " << rank << " mdata " << file.m_mdata.m_data.magic_number[0]
                                        << file.m_mdata.m_data.magic_number[1] << file.m_mdata.m_data.magic_number[2]);
 #ifdef DEBUG
-        std::cerr << file.m_mdata.to_string() << std::endl;
+        std::cerr << file.m_mdata << std::endl;
 #endif
         if (!file.m_mdata.m_data.is_valid()) {
             free(buf);

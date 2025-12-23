@@ -27,8 +27,9 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
 
-#include "allocator.hpp"
+#include "fixed_ostream.hpp"
 #include "profiler.hpp"
 #include "xpn_env.hpp"
 
@@ -70,40 +71,43 @@ struct print_errno {
     }
 };
 
-static constexpr int SSTREAM_BUFFER_SIZE = 4096;
+struct static_debug_mutex {
+    static std::mutex &get() {
+        static std::mutex static_mutex;
+        return static_mutex;
+    }
+};
 
-#define XPN_DEBUG_COMMON_HEADER                                                                                  \
-    {                                                                                                            \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                    \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                      \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                                                   \
-        out << "[" << ::XPN::get_time_stamp() << "] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" \
-            << __LINE__ << "] ";                                                                                 \
-        ::fprintf(stderr, "%s", sstream_buffer);                                                                 \
-        ::fflush(stderr);                                                                                        \
+static constexpr int DEBUG_BUFFER_SIZE = 4096;
+
+#define XPN_DEBUG_COMMON_HEADER                                                                                    \
+    {                                                                                                              \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                \
+        out << "[" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ << "] [" \
+            << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] ";                                              \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                      \
+        ::fflush(stderr);                                                                                          \
     }
 
 #ifdef DEBUG
-#define XPN_DEBUG(out_format)                                                               \
-    {                                                                                       \
-        XPN_DEBUG_COMMON_HEADER                                                             \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                               \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE}; \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                              \
-        out << out_format << std::endl;                                                     \
-        ::fprintf(stderr, "%s", sstream_buffer);                                            \
-        ::fflush(stderr);                                                                   \
+#define XPN_DEBUG(out_format)                                                      \
+    {                                                                              \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get()); \
+        XPN_DEBUG_COMMON_HEADER                                                    \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                \
+        out << out_format << std::endl;                                            \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());      \
+        ::fflush(stderr);                                                          \
     }
 #else
-#define XPN_DEBUG(out_format)                                                               \
-    if (::XPN::xpn_env::get_instance().xpn_debug) {                                         \
-        XPN_DEBUG_COMMON_HEADER                                                             \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                               \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE}; \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                              \
-        out << out_format << std::endl;                                                     \
-        ::fprintf(stderr, "%s", sstream_buffer);                                            \
-        ::fflush(stderr);                                                                   \
+#define XPN_DEBUG(out_format)                                                      \
+    if (::XPN::xpn_env::get_instance().xpn_debug) {                                \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get()); \
+        XPN_DEBUG_COMMON_HEADER                                                    \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                \
+        out << out_format << std::endl;                                            \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());      \
+        ::fflush(stderr);                                                          \
     }
 #endif
 
@@ -120,39 +124,36 @@ static constexpr int SSTREAM_BUFFER_SIZE = 4096;
 #ifdef DEBUG
 #define debug_error(out_format)                                                                                        \
     {                                                                                                                  \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                          \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                            \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                                                         \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                     \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                    \
         out << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                              \
-        ::fprintf(stderr, "%s", sstream_buffer);                                                                       \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                          \
         ::fflush(stderr);                                                                                              \
     }
 #define debug_warning(out_format)                                                                          \
     {                                                                                                      \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                              \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                                             \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                         \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                        \
         out << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
             << out_format << std::endl;                                                                    \
-        ::fprintf(stderr, "%s", sstream_buffer);                                                           \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                              \
         ::fflush(stderr);                                                                                  \
     }
 #define debug_info(out_format)                                                                                        \
     {                                                                                                                 \
-        char sstream_buffer[::XPN::SSTREAM_BUFFER_SIZE] = {};                                                         \
-        ::XPN::buffer_memory_resource resource{sstream_buffer, ::XPN::SSTREAM_BUFFER_SIZE};                           \
-        auto out = ::XPN::make_stack_ostringstream(&resource);                                                        \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                    \
+        FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                   \
         out << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
             << std::endl;                                                                                             \
-        ::fprintf(stderr, "%s", sstream_buffer);                                                                      \
+        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                         \
         ::fflush(stderr);                                                                                             \
     }
-#define debug_info_fmt(...)                 \
-    {                                          \
-        char buff[::XPN::SSTREAM_BUFFER_SIZE]; \
-        ::sprintf(buff, __VA_ARGS__);          \
-        debug_info(buff);                      \
+#define debug_info_fmt(...)                  \
+    {                                        \
+        char buff[::XPN::DEBUG_BUFFER_SIZE]; \
+        ::sprintf(buff, __VA_ARGS__);        \
+        debug_info(buff);                    \
     }
 #else
 #define debug_error(out_format)

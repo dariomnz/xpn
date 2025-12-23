@@ -111,7 +111,7 @@
         char processor_name[MPI_MAX_PROCESSOR_NAME];
         MPI_Get_processor_name(processor_name, &len);
         printf("Rank %d processor_name %s ", rank, processor_name); 
-        std::cerr<<old_file.m_mdata.to_string()<<std::endl;
+        std::cerr<<old_file.m_mdata<<std::endl;
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
       }
     }

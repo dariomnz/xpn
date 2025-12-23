@@ -36,13 +36,13 @@ namespace XPN
         workers_pool();
         ~workers_pool();
 
-        std::future<int> launch(std::function<int()> task) override;
-        void launch_no_future(std::function<void()> task) override;
+        void launch(FixedFunction<int()> task, TaskResult<int>& result) override;
+        void launch_no_future(FixedFunction<void()> task) override;
         void wait_all() override;
         uint32_t size() const override;
     private:
         std::vector<std::thread> m_threads;
-        std::queue<std::variant<std::packaged_task<int()>,std::function<void()>>> m_tasks;
+        std::queue<FixedFunction<void(), 100>> m_tasks;
         std::mutex m_queue_mutex;
         std::condition_variable m_cv;
 
