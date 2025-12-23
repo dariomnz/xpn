@@ -36,7 +36,7 @@ namespace XPN
         workers_pool();
         ~workers_pool();
 
-        void launch(FixedFunction<int()> task, TaskResult<int>& result) override;
+        void launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result) override;
         void launch_no_future(FixedFunction<void()> task) override;
         void wait_all() override;
         uint32_t size() const override;

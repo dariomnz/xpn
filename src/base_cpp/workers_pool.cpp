@@ -83,7 +83,7 @@ namespace XPN
         return m_num_threads;
     }
 
-    void workers_pool::launch(FixedFunction<int()> task, TaskResult<int>& result)
+    void workers_pool::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result)
     {
         {
             std::unique_lock<std::mutex> lock(m_full_mutex);

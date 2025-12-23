@@ -26,7 +26,7 @@ namespace XPN
     workers_sequential::workers_sequential() {}
     workers_sequential::~workers_sequential() {}
 
-    void workers_sequential::launch(FixedFunction<int()> task, TaskResult<int>& result)
+    void workers_sequential::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result)
     {
         result.init();
         result.set_value(task());

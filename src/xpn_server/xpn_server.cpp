@@ -486,14 +486,15 @@ int xpn_server::stop()
     }
     
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    int aux_res;
-    FixedTaskQueue<int> tasks;
+
+    FixedTaskQueue<WorkerResult> tasks;
     for (auto &name : srv_names)
     {
         if (tasks.full()) {
-            aux_res = tasks.consume_one();
-            if (aux_res < 0) {
-                res = aux_res;
+            auto aux_res = tasks.consume_one();
+            if (aux_res.result < 0) {
+                res = aux_res.result;
+                errno = aux_res.errorno;
             }
         }
         auto &task = tasks.get_next_slot();
@@ -520,7 +521,7 @@ int xpn_server::stop()
             ret = socket::client_connect(srv_name, srv_port, socket);
             if (ret < 0) {
                 print("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_down] ERROR: socket connection " << name);
-                return ret;
+                return WorkerResult(ret);
             }
 
             ret = socket::send(socket, &buffer, sizeof(buffer));
@@ -539,14 +540,15 @@ int xpn_server::stop()
                 }
                 socket::close(socket);
             }
-            return ret;
+            return WorkerResult(ret);
         }, task);
     }
 
     while (!tasks.empty()) {
-        aux_res = tasks.consume_one();
-        if (aux_res < 0) {
-            res = aux_res;
+        auto aux_res = tasks.consume_one();
+        if (aux_res.result < 0) {
+            res = aux_res.result;
+            errno = aux_res.errorno;
         }
     }
     

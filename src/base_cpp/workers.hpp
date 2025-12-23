@@ -35,13 +35,21 @@ namespace XPN
         thread_pool = 1,
         thread_on_demand = 2,
     };
+
+    struct WorkerResult {
+        int result = 0;
+        int errorno = 0;
+
+        WorkerResult() = default;
+        explicit WorkerResult(int res) : result(res), errorno(errno) {}
+    };
     
     class workers
     {
     public:
         virtual ~workers() = default;
 
-        virtual void launch(FixedFunction<int()> task, TaskResult<int>& result) = 0;
+        virtual void launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result) = 0;
         virtual void launch_no_future(FixedFunction<void()> task) = 0;
         virtual void wait_all() = 0;
         virtual uint32_t size() const = 0;

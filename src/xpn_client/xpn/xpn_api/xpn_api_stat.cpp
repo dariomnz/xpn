@@ -150,16 +150,16 @@ namespace XPN
             return res;
         }
 
-        int aux_res;
-        FixedTaskQueue<int> tasks;
+        FixedTaskQueue<WorkerResult> tasks;
         std::mutex buff_mutex;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (static_cast<int>(i) == file.m_mdata.master_file()) continue;
             if (tasks.full()) {
-                aux_res = tasks.consume_one();
-                if (aux_res < 0) {
-                    res = aux_res;
+                auto aux_res = tasks.consume_one();
+                if (aux_res.result < 0) {
+                    res = aux_res.result;
+                    errno = aux_res.errorno;
                 }
             }
             auto &task = tasks.get_next_slot();
@@ -176,14 +176,15 @@ namespace XPN
                     buf->f_ffree += aux_buf.f_ffree;
                     buf->f_favail += aux_buf.f_favail;
                 }
-                return res;
+                return WorkerResult(res);
             }, task);
         }
 
         while (!tasks.empty()) {
-            aux_res = tasks.consume_one();
-            if (aux_res < 0) {
-                res = aux_res;
+            auto aux_res = tasks.consume_one();
+            if (aux_res.result < 0) {
+                res = aux_res.result;
+                errno = aux_res.errorno;
             }
         }
 

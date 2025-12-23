@@ -80,31 +80,33 @@ namespace XPN
         }
 
         if ((O_CREAT == (flags & O_CREAT))) {
-            int aux_res;
-            FixedTaskQueue<int> tasks;
+            FixedTaskQueue<WorkerResult> tasks;
             for (uint64_t i = 0; i < file->m_part.m_data_serv.size(); i++) {
                 auto& serv = file->m_part.m_data_serv[i];
                 if (file->exist_in_serv(i)){
                     if (tasks.full()) {
-                        aux_res = tasks.consume_one();
-                        if (aux_res < 0) {
-                            res = aux_res;
+                        auto aux_res = tasks.consume_one();
+                        if (aux_res.result < 0) {
+                            res = aux_res.result;
+                            errno = aux_res.errorno;
                             XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
                             return res;
                         }
                     }
                     auto &task = tasks.get_next_slot();
                     m_worker->launch([i, &serv, &file, flags, mode](){
-                        return serv->nfi_open(file->m_path, flags, mode, file->m_data_vfh[i]);
+                        int res = serv->nfi_open(file->m_path, flags, mode, file->m_data_vfh[i]);
+                        return WorkerResult(res);
                     }, task);
                 }
             }
 
             
             while (!tasks.empty()) {
-                aux_res = tasks.consume_one();
-                if (aux_res < 0) {
-                    res = aux_res;
+                auto aux_res = tasks.consume_one();
+                if (aux_res.result < 0) {
+                    res = aux_res.result;
+                    errno = aux_res.errorno;
                     XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
                     return res;
                 }
@@ -163,27 +165,29 @@ namespace XPN
         }
 
         if (file->m_links == 0) {
-            int aux_res;
-            FixedTaskQueue<int> tasks;
+            FixedTaskQueue<WorkerResult> tasks;
             for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
                 if (file->m_data_vfh[i].fd != -1) {
                     if (tasks.full()) {
-                        aux_res = tasks.consume_one();
-                        if (aux_res < 0) {
-                            res = aux_res;
+                        auto aux_res = tasks.consume_one();
+                        if (aux_res.result < 0) {
+                            res = aux_res.result;
+                            errno = aux_res.errorno;
                         }
                     }
                     auto &task = tasks.get_next_slot();
                     m_worker->launch([i, &file]() { 
-                        return file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]); 
+                        int res = file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]); 
+                        return WorkerResult(res);
                     }, task);
                 }
             }
 
             while (!tasks.empty()) {
-                aux_res = tasks.consume_one();
-                if (aux_res < 0) {
-                    res = aux_res;
+                auto aux_res = tasks.consume_one();
+                if (aux_res.result < 0) {
+                    res = aux_res.result;
+                    errno = aux_res.errorno;
                 }
             }
         } else {
@@ -217,30 +221,32 @@ namespace XPN
             return res;
         }
         res = 0;
-        int aux_res;
-        FixedTaskQueue<int> tasks;
+        FixedTaskQueue<WorkerResult> tasks;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (file.exist_in_serv(i)){
                 if (tasks.full()) {
-                    aux_res = tasks.consume_one();
-                    if (aux_res < 0) {
-                        res = aux_res;
+                    auto aux_res = tasks.consume_one();
+                    if (aux_res.result < 0) {
+                        res = aux_res.result;
+                        errno = aux_res.errorno;
                     }
                 }
                 auto &task = tasks.get_next_slot();
                 m_worker->launch([i, &file](){
                     // Always wait and not async because it can fail in other ways
-                    return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                    int res = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                    return WorkerResult(res);
                     // v_res[i] = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
                 }, task);
             }
         }
         
         while (!tasks.empty()) {
-            aux_res = tasks.consume_one();
-            if (aux_res < 0) {
-                res = aux_res;
+            auto aux_res = tasks.consume_one();
+            if (aux_res.result < 0) {
+                res = aux_res.result;
+                errno = aux_res.errorno;
             }
         }
 
@@ -281,36 +287,39 @@ namespace XPN
             return res;
         }
 
-        int aux_res;
-        FixedTaskQueue<int> tasks;
+        FixedTaskQueue<WorkerResult> tasks;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (file.exist_in_serv(i)){
                 if (tasks.full()) {
-                    aux_res = tasks.consume_one();
-                    if (aux_res < 0) {
-                        res = aux_res;
+                    auto aux_res = tasks.consume_one();
+                    if (aux_res.result < 0) {
+                        res = aux_res.result;
+                        errno = aux_res.errorno;
                     }
                 }
                 auto &task = tasks.get_next_slot();
                 if (!new_file.exist_in_serv(i)){
                     XPN_DEBUG("Remove in server "<<i);
                     m_worker->launch([i, &file](){
-                        return file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                        int res = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                        return WorkerResult(res);
                     }, task);
                 }else{
                     XPN_DEBUG("Rename in server "<<i);
                     m_worker->launch([i, &file, &new_file](){
-                        return file.m_part.m_data_serv[i]->nfi_rename(file.m_path, new_file.m_path);
+                        int res = file.m_part.m_data_serv[i]->nfi_rename(file.m_path, new_file.m_path);
+                        return WorkerResult(res);
                     }, task);
                 }
             }
         }
         
         while (!tasks.empty()) {
-            aux_res = tasks.consume_one();
-            if (aux_res < 0) {
-                res = aux_res;
+            auto aux_res = tasks.consume_one();
+            if (aux_res.result < 0) {
+                res = aux_res.result;
+                errno = aux_res.errorno;
             }
         }
 
