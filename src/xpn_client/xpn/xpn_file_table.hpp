@@ -26,6 +26,7 @@
 #include <unordered_set>
 
 #include "base_cpp/str_unordered_map.hpp"
+#include "base_cpp/grow_fixed_vector.hpp"
 #include "xpn_file.hpp"
 
 namespace XPN
@@ -72,8 +73,14 @@ namespace XPN
 
     private:
         std::unordered_map<int, std::shared_ptr<xpn_file>> m_files;
-        std::unordered_set<int> m_free_keys;
         int secuencial_key = 1;
         std::recursive_mutex m_mutex = {};
+
+    private:
+        GrowFixedVector<int, 256> m_free_keys;
+        void add_free_key(int key);
+        // It needs to have keys, previous checked with !m_free_keys.empty()
+        int get_free_key();
+        void remove_free_key(int key);
     };
 } // namespace XPN

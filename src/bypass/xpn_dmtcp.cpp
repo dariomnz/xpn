@@ -204,8 +204,6 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             debug_info("In XPN::pre_checkpoint");
             dmtcp_global_barrier("XPN::pre_checkpoint");
 
-            setenv("XPN_RESERVE_PATH_VFH", "256", 1);
-
             auto &instance = XPN::ArenaAllocatorStorage::instance();
             instance.m_inCkpt = true;
             // Activate a arena for all the operations in ckpt
@@ -248,8 +246,6 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             
             xpn_dmtcp::update_restarts();
 
-            unsetenv("XPN_RESERVE_PATH_VFH");
-
             elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
             debug_info("Time taken xpn_checkpoint for rank " << get_rank() << ": " << std::fixed << std::setprecision(6)
                                                         << elapsed_seconds.count() << " seconds");
@@ -281,8 +277,6 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             instance.m_inCkpt = false;
 
             xpn_dmtcp::update_restarts();
-
-            unsetenv("XPN_RESERVE_PATH_VFH");
 
             xpn_clean_connections();
             // if (wasDisconnected) {

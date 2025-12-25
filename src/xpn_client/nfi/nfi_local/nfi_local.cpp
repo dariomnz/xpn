@@ -36,25 +36,17 @@ int nfi_local::nfi_open (const std::string_view &path, int flags, mode_t mode, x
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] >> Begin");
 
-  size_t total_needed = m_path.size() + 1 + path.size();
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
-  if (xpn_env::get_instance().xpn_reserve_path_vfh != 0 && fho.path.capacity() < total_needed) {
-      print("ERROR: xpn_reserve_path_vfh is " << xpn_env::get_instance().xpn_reserve_path_vfh
-                                              << " but the needed size is " << total_needed);
-  }
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<srv_path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode)<<")");
 
-  fho.path.clear();
-  fho.path.reserve(total_needed);
-  fho.path.append(m_path);
-  fho.path.append("/");
-  fho.path.append(path);
-
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<fho.path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode)<<")");
-
-  ret = PROXY(open)(fho.path.c_str(), flags, mode);
+  ret = PROXY(open)(srv_path.c_str(), flags, mode);
   if (ret < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] ERROR: real_posix_open2 fails to open '"<<fho.path.c_str()<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] ERROR: real_posix_open2 fails to open '"<<srv_path.c_str()<<"'");
     return -1;
   }
 
@@ -62,9 +54,9 @@ int nfi_local::nfi_open (const std::string_view &path, int flags, mode_t mode, x
     PROXY(close)(ret);
   }
 
-  fho.fd = ret;
+  fho.set_file(ret);
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<fho.path.c_str()<<")="<<ret);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<srv_path.c_str()<<")="<<ret);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] << End");
 
   return 0;
@@ -76,18 +68,18 @@ int nfi_local::nfi_create (const std::string_view &path, mode_t mode, xpn_fh &fh
   return nfi_local::nfi_open(path, O_WRONLY|O_CREAT|O_TRUNC, mode, fho);
 }
 
-int nfi_local::nfi_close (const xpn_fh &fh)
+int nfi_local::nfi_close ([[maybe_unused]] const std::string_view &path, const xpn_fh &fh)
 {
   if (xpn_env::get_instance().xpn_session_file == 1){
     int ret;
 
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] >> Begin");
     
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.fd<<")");
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as_file().fd<<")");
 
-    ret = PROXY(close)(fh.fd);
+    ret = PROXY(close)(fh.as_file().fd);
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.fd<<")="<<ret);
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as_file().fd<<")="<<ret);
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] >> End");
 
     return ret;
@@ -97,13 +89,12 @@ int nfi_local::nfi_close (const xpn_fh &fh)
   }
 }
 
-int64_t nfi_local::nfi_read (const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_read (const std::string_view &path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] >> Begin");
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<fh.path<<", "<<offset<<", "<<size<<")");
   
   // Check arguments...
   if (size == 0){
@@ -111,28 +102,33 @@ int64_t nfi_local::nfi_read (const xpn_fh &fh, char *buffer, int64_t offset, uin
   }
   
   int fd;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
-    fd = fh.fd;
+    fd = fh.as_file().fd;
   }else{
-    fd = PROXY(open)(fh.path.c_str(), O_RDONLY);
+    fd = PROXY(open)(srv_path.c_str(), O_RDONLY);
   }
 
   if (fd < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read open fail '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read open fail '"<<srv_path<<"'");
     return -1;
   }
   ret = PROXY(lseek)(fd, offset, SEEK_SET);
   if (ret < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read lseek fail from '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read lseek fail from '"<<srv_path<<"'");
     ret = -1;
     goto cleanup_nfi_local_read;
   }
   ret = filesystem::read(fd, buffer, size);
   if (ret < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read reads fail from '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read reads fail from '"<<srv_path<<"'");
     ret = -1;
     goto cleanup_nfi_local_read;
   }
@@ -140,13 +136,13 @@ cleanup_nfi_local_read:
   if (xpn_env::get_instance().xpn_session_file == 0){
     PROXY(close)(fd);
   }
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<fh.path<<", "<<offset<<", "<<size<<")="<<ret);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<srv_path<<", "<<offset<<", "<<size<<")="<<ret);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] >> End");
 
   return ret;
 }
 
-int64_t nfi_local::nfi_write (const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_write (const std::string_view &path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
@@ -157,31 +153,35 @@ int64_t nfi_local::nfi_write (const xpn_fh &fh, const char *buffer, int64_t offs
     return 0;
   }
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<fh.path<<", "<<offset<<", "<<size<<")");
-
+  
   int fd;
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
-    fd = fh.fd;
+    fd = fh.as_file().fd;
   }else{
-    fd = PROXY(open)(fh.path.c_str(), O_WRONLY);
+    fd = PROXY(open)(srv_path.c_str(), O_WRONLY);
   }
 
   if (fd < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write open fail '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write open fail '"<<srv_path<<"'");
     return -1;
   }
   ret = PROXY(lseek)(fd, offset, SEEK_SET);
   if (ret < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write lseek fail from '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write lseek fail from '"<<srv_path<<"'");
     ret = -1;
     goto cleanup_nfi_local_write;
   }
   ret = filesystem::write(fd, buffer, size);
   if (ret < 0)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write write fail from '"<<fh.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write write fail from '"<<srv_path<<"'");
     ret = -1;
     goto cleanup_nfi_local_write;
   }
@@ -192,7 +192,7 @@ cleanup_nfi_local_write:
   }else{
     PROXY(close)(fd);
   }
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<fh.path<<", "<<offset<<", "<<size<<")="<<ret);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<srv_path<<", "<<offset<<", "<<size<<")="<<ret);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] >> End");
 
   return ret;
@@ -327,38 +327,36 @@ int nfi_local::nfi_opendir(const std::string_view &path, xpn_fh &fho)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] >> Begin");
 
-  size_t total_needed = m_path.size() + 1 + path.size();
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
 
-  fho.path.clear();
-  fho.path.reserve(total_needed);
-  fho.path.append(m_path);
-  fho.path.append("/");
-  fho.path.append(path);
-
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<fho.path<<")");
-
-  s = PROXY(opendir)(fho.path.c_str());
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<srv_path<<")");
+  
+  s = PROXY(opendir)(srv_path.c_str());
   if (s == NULL)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] ERROR: real_posix_opendir fails to opendir '"<<fho.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] ERROR: real_posix_opendir fails to opendir '"<<srv_path<<"'");
     return -1;
   }
-
+  
+  long telldir_res = 0;
   if (xpn_env::get_instance().xpn_session_dir == 0){
-    fho.telldir = PROXY(telldir)(s);
+    telldir_res = PROXY(telldir)(s);
     PROXY(closedir)(s);
   }
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<fho.path<<")="<<s);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<srv_path<<")="<<s);
 
-  fho.dir = reinterpret_cast<int64_t>(s);
+  fho.set_dir(telldir_res, reinterpret_cast<int64_t>(s));
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] >> End");
 
   return 0;
 }
 
-int nfi_local::nfi_readdir(xpn_fh &fhd, struct ::dirent &entry)
+int nfi_local::nfi_readdir(const std::string_view& path, xpn_fh &fhd, struct ::dirent &entry)
 {
   DIR* s;
   ::dirent *ent;
@@ -367,52 +365,57 @@ int nfi_local::nfi_readdir(xpn_fh &fhd, struct ::dirent &entry)
   // cleaning entry values...
   memset(&entry, 0, sizeof(dirent));
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] nfi_local_readdir("<<fhd.path<<")");
-  
+  FixedStringPath srv_path;
+  srv_path.append(m_path);
+  srv_path.append("/");
+  srv_path.append(path);
+
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] nfi_local_readdir("<<srv_path<<")");
+
   if (xpn_env::get_instance().xpn_session_dir == 0){
-    s = PROXY(opendir)(fhd.path.c_str());  
+    s = PROXY(opendir)(srv_path.c_str());  
     if (s == NULL) {
-      debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] ERROR: real_posix_opendir fails to opendir '"<<fhd.path<<"'");
+      debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] ERROR: real_posix_opendir fails to opendir '"<<srv_path<<"'");
       return -1;
     }
     
-    PROXY(seekdir)(s, fhd.telldir);
+    PROXY(seekdir)(s, fhd.as_dir().telldir);
   }else{
-    s = reinterpret_cast<::DIR*>(fhd.dir);
+    s = reinterpret_cast<::DIR*>(fhd.as_dir().dir);
   }
   // Reset errno
   errno = 0;
   ent = PROXY(readdir)(s);
   if (ent == NULL)
   {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] ERROR: real_posix_readdir fails to readdir '"<<fhd.path<<"'");
+    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] ERROR: real_posix_readdir fails to readdir '"<<srv_path<<"'");
     return -1;
   }
   if (xpn_env::get_instance().xpn_session_dir == 0){
-    fhd.telldir = PROXY(telldir)(s);
+    fhd.set_dir(PROXY(telldir)(s), fhd.as_dir().dir);
     PROXY(closedir)(s);
   }
 
   memcpy(&entry, ent, sizeof(::dirent));
 
-  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] nfi_local_readdir("<<fhd.path<<")="<<(void*)&entry);
+  debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] nfi_local_readdir("<<srv_path<<")="<<(void*)&entry);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_readdir] >> End");
 
   return 0;
 }
 
-int nfi_local::nfi_closedir (const xpn_fh &fhd)
+int nfi_local::nfi_closedir ([[maybe_unused]] const std::string_view &path, const xpn_fh &fhd)
 {
   if (xpn_env::get_instance().xpn_session_dir == 1){
     int ret;
 
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] >> Begin");
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.dir<<")");
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as_dir().dir<<")");
 
-    ret = PROXY(closedir)(reinterpret_cast<::DIR*>(fhd.dir));
+    ret = PROXY(closedir)(reinterpret_cast<::DIR*>(fhd.as_dir().dir));
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.dir<<")="<<ret);
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as_dir().dir<<")="<<ret);
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] >> End");
 
     return ret;

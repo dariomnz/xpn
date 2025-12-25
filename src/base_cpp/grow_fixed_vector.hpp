@@ -29,55 +29,48 @@
 
 namespace XPN {
 
-template <size_t Capacity>
-struct GrowFixedStringStorage {
-    char m_buffer[Capacity + 1];
+template <typename T, size_t Capacity>
+struct GrowFixedVectorStorage {
+    char m_buffer[sizeof(T) * Capacity];
     std::pmr::monotonic_buffer_resource m_pool;
 
     // Default contructor
-    GrowFixedStringStorage() : m_pool(m_buffer, sizeof(m_buffer)) {}
+    GrowFixedVectorStorage() : m_pool(m_buffer, sizeof(m_buffer)) {}
     // Copy contructor
-    GrowFixedStringStorage(const GrowFixedStringStorage&) : GrowFixedStringStorage() {}
+    GrowFixedVectorStorage(const GrowFixedVectorStorage&) : GrowFixedVectorStorage() {}
     // Move contructor
-    GrowFixedStringStorage(GrowFixedStringStorage&&) noexcept : GrowFixedStringStorage() {}
+    GrowFixedVectorStorage(GrowFixedVectorStorage&&) noexcept : GrowFixedVectorStorage() {}
 };
 
-template <size_t Capacity>
-class GrowFixedString : private GrowFixedStringStorage<Capacity>, public std::pmr::string {
+template <typename T, size_t Capacity>
+class GrowFixedVector : private GrowFixedVectorStorage<T, Capacity>, public std::pmr::vector<T> {
    public:
-    GrowFixedString() : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) { this->reserve(Capacity); }
-
-    GrowFixedString(const char* s) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
+    // Default contructor
+    GrowFixedVector() : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(&(this->m_pool)) {
         this->reserve(Capacity);
-        this->append(s);
-    }
-
-    GrowFixedString(const std::string_view& sv) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
-        this->reserve(Capacity);
-        this->append(sv);
     }
 
     // Copy contructor
-    GrowFixedString(const GrowFixedString& other)
-        : GrowFixedStringStorage<Capacity>(), std::pmr::string(other, &(this->m_pool)) {
+    GrowFixedVector(const GrowFixedVector& other)
+        : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(other, &(this->m_pool)) {
         this->reserve(Capacity);
     }
     // Move constructor
-    GrowFixedString(GrowFixedString&& other) noexcept
-        : GrowFixedStringStorage<Capacity>(), std::pmr::string(std::move(other), &(this->m_pool)) {
+    GrowFixedVector(GrowFixedVector&& other) noexcept
+        : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(std::move(other), &(this->m_pool)) {
         this->reserve(Capacity);
     }
     // Copy assigment
-    GrowFixedString& operator=(const GrowFixedString& other) {
+    GrowFixedVector& operator=(const GrowFixedVector& other) {
         if (this != &other) {
-            std::pmr::string::operator=(other);
+            std::pmr::vector<T>::operator=(other);
         }
         return *this;
     }
     // Move assigment
-    GrowFixedString& operator=(GrowFixedString&& other) noexcept {
+    GrowFixedVector& operator=(GrowFixedVector&& other) noexcept {
         if (this != &other) {
-            std::pmr::string::operator=(std::move(other));
+            std::pmr::vector<T>::operator=(std::move(other));
         }
         return *this;
     }

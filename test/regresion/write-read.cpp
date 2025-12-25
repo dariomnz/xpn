@@ -14,6 +14,7 @@
 void run_test(int thread = 0) {
     size_t data_size_mb = 1;
     const std::string filename = "/xpn/mega_data_test" + std::to_string(thread) + ".bin";
+    const std::string filename_rename = "/xpn/mega_data_test_rename" + std::to_string(thread) + ".bin";
     size_t total_bytes = data_size_mb * 1024 * 1024;
     std::string original_data = setup::generate_random_string(total_bytes);
     std::cout << "Generated data of " << data_size_mb << " MB." << std::endl;
@@ -31,8 +32,15 @@ void run_test(int thread = 0) {
         exit(EXIT_FAILURE);
     }
     std::cout << "Successfully wrote " << written_bytes << " bytes to " << filename << std::endl;
+    
+    int rename_result = xpn_rename(filename.c_str(), filename_rename.c_str());
+    if (rename_result < 0) {
+        std::cerr << "Error renaming the file: " << filename << " to " << filename_rename << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout << "Successfully renaming file " << filename << " to " << filename_rename << std::endl;
 
-    int file_r = xpn_open(filename.c_str(), O_RDONLY);
+    int file_r = xpn_open(filename_rename.c_str(), O_RDONLY);
     if (file_r < 0) {
         perror("Error opening file for reading");
         exit(EXIT_FAILURE);
@@ -51,7 +59,7 @@ void run_test(int thread = 0) {
         std::cerr << "Error reading data from file: " << filename << std::endl;
         exit(EXIT_FAILURE);
     }
-    std::cout << "Successfully read " << read_bytes << " bytes from " << filename << std::endl;
+    std::cout << "Successfully read " << read_bytes << " bytes from " << filename_rename << std::endl;
 
     bool is_same = (original_data == read_data);
     if (is_same) {
@@ -61,9 +69,9 @@ void run_test(int thread = 0) {
         exit(EXIT_FAILURE);
     }
 
-    int ret = xpn_unlink(filename.c_str());
+    int ret = xpn_unlink(filename_rename.c_str());
     if (ret < 0) {
-        std::cerr << "Error removing file: " << filename << std::endl;
+        std::cerr << "Error removing file: " << filename_rename << std::endl;
         exit(EXIT_FAILURE);
     }
 }

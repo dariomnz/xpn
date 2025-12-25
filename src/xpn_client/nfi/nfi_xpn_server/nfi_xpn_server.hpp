@@ -37,17 +37,17 @@ namespace XPN
         // Operations 
         int nfi_open        (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho) override;
         int nfi_create      (const std::string_view &path, mode_t mode, xpn_fh &fho) override;
-        int nfi_close       (const xpn_fh &fh) override;
-        int64_t nfi_read    (const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
-        int64_t nfi_write   (const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
+        int nfi_close       (const std::string_view &path, const xpn_fh &fh) override;
+        int64_t nfi_read    (const std::string_view &path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
+        int64_t nfi_write   (const std::string_view &path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
         int nfi_remove      (const std::string_view &path, bool is_async) override;
         int nfi_rename      (const std::string_view &path, const std::string_view &new_path) override;
         int nfi_getattr     (const std::string_view &path, struct ::stat &st) override;
         int nfi_setattr     (const std::string_view &path, struct ::stat &st) override;
         int nfi_mkdir       (const std::string_view &path, mode_t mode) override;
         int nfi_opendir     (const std::string_view &path, xpn_fh &fho) override;
-        int nfi_readdir     (xpn_fh &fhd, struct ::dirent &entry) override;
-        int nfi_closedir    (const xpn_fh &fhd) override;
+        int nfi_readdir     (const std::string_view &path, xpn_fh &fhd, struct ::dirent &entry) override;
+        int nfi_closedir    (const std::string_view &path, const xpn_fh &fhd) override;
         int nfi_rmdir       (const std::string_view &path, bool is_async) override;
         int nfi_statvfs     (const std::string_view &path, struct ::statvfs &inf) override;
         int nfi_read_mdata  (const std::string_view &path, xpn_metadata &mdata) override;

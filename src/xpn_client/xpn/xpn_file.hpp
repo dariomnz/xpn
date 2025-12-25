@@ -31,16 +31,42 @@
 
 namespace XPN
 {
-    struct xpn_fh
-    {
-        GrowFixedString<128> path;  // url in the server   
-        long telldir = 0;           // telldir of directory in the server when XPN_SESSION_DIR is not set
-        int64_t dir = 0;            // pointer to directory in the server when XPN_SESSION_DIR set
-        int fd = -1;                // file_descriptor in the server when XPN_SESSION_FILE set
+    struct xpn_fh {
+       public:
+        struct DirData {
+            long telldir = 0;  // telldir of directory in the server when XPN_SESSION_DIR is not set
+            int64_t dir = 0;   // pointer to directory in the server when XPN_SESSION_DIR set
+        };
+        struct FileData {
+            int fd = -1;       // file_descriptor in the server when XPN_SESSION_FILE set
+        };
 
-        xpn_fh() { path.reserve(xpn_env::get_instance().xpn_reserve_path_vfh); }
-        bool is_initialized() {return !path.empty();}
-        void reset() {*this = {};}
+       private:
+        std::variant<std::monostate, DirData, FileData> data = std::monostate();
+
+       public:
+        bool is_initialized() { return !std::holds_alternative<std::monostate>(data); }
+        bool is_dir() const { return std::holds_alternative<DirData>(data); }
+        bool is_file() const { return std::holds_alternative<FileData>(data); }
+
+        DirData as_dir() const {
+            if (const auto *val = std::get_if<DirData>(&data)) {
+                return *val;
+            }
+            return DirData{};
+        }
+
+        FileData as_file() const {
+            if (const auto *val = std::get_if<FileData>(&data)) {
+                return *val;
+            }
+            return FileData{};
+        }
+
+        void set_dir(long tell, int64_t ptr) { data = DirData{tell, ptr}; }
+        void set_file(int file_descriptor) { data = FileData{file_descriptor}; }
+
+        void reset() { data = std::monostate{}; }
     };
 
     enum class file_type

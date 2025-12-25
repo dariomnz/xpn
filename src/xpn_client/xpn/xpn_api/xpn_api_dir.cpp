@@ -98,7 +98,7 @@ namespace XPN
                 }
                 auto &task = tasks.get_next_slot();
                 m_worker->launch([i, &file](){
-                    int res = file->m_part.m_data_serv[i]->nfi_closedir(file->m_data_vfh[i]);
+                    int res = file->m_part.m_data_serv[i]->nfi_closedir(file->m_path, file->m_data_vfh[i]);
                     return WorkerResult(res);
                 }, task);
             }
@@ -137,7 +137,7 @@ namespace XPN
 
         thread_local static struct ::dirent entry = {};
 
-        res = file->m_part.m_data_serv[master_dir]->nfi_readdir(file->m_data_vfh[master_dir], entry);
+        res = file->m_part.m_data_serv[master_dir]->nfi_readdir(file->m_path, file->m_data_vfh[master_dir], entry);
 
         if (res < 0){
             XPN_DEBUG_END;

@@ -167,7 +167,7 @@ namespace XPN
         if (file->m_links == 0) {
             FixedTaskQueue<WorkerResult> tasks;
             for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
-                if (file->m_data_vfh[i].fd != -1) {
+                if (file->m_data_vfh[i].is_file() && file->m_data_vfh[i].as_file().fd != -1) {
                     if (tasks.full()) {
                         auto aux_res = tasks.consume_one();
                         if (aux_res.result < 0) {
@@ -177,7 +177,7 @@ namespace XPN
                     }
                     auto &task = tasks.get_next_slot();
                     m_worker->launch([i, &file]() { 
-                        int res = file->m_part.m_data_serv[i]->nfi_close(file->m_data_vfh[i]); 
+                        int res = file->m_part.m_data_serv[i]->nfi_close(file->m_path, file->m_data_vfh[i]); 
                         return WorkerResult(res);
                     }, task);
                 }

@@ -102,7 +102,7 @@ namespace XPN
                 XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
                                   << " size: " << rw_op.buffer_size);
                 auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_read(
-                    file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
+                    file.m_path, file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
                     rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
                 XPN_DEBUG("nfi_read " << ret);
                 return WorkerResult(ret);
@@ -229,7 +229,7 @@ namespace XPN
                 XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
                                   << " size: " << rw_op.buffer_size);
                 auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_write(
-                    file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
+                    file.m_path, file.m_data_vfh[rw_op.server_status], static_cast<char *>(rw_op.buffer),
                     rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
                 XPN_DEBUG("nfi_write " << ret);
                 return WorkerResult(ret);

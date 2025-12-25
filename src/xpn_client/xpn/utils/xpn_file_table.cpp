@@ -47,8 +47,7 @@ int xpn_file_table::insert(std::shared_ptr<xpn_file> file) {
         fd = secuencial_key;
         debug_info("Get from secuencial_key: " << fd);
     } else {
-        fd = *m_free_keys.begin();
-        m_free_keys.erase(fd);
+        fd = get_free_key();
         debug_info("Get from free_keys: " << fd);
     }
     debug_info("To insert in: " << fd);
@@ -62,7 +61,7 @@ bool xpn_file_table::remove(int fd) {
     std::unique_lock lock(m_mutex);
     int res = m_files.erase(fd);
     if (res == 1) {
-        m_free_keys.emplace(fd);
+        add_free_key(fd);
     }
     debug_info("Removed " << fd << " table after remove:\n" << to_string());
     return res == 1 ? true : false;
@@ -83,7 +82,8 @@ int xpn_file_table::dup(int fd, int new_fd) {
             xpn_api::get_instance().close(new_fd);
         }
         m_files.emplace(std::make_pair(new_fd, file));
-        m_free_keys.erase(new_fd);
+        // In case the new_fd is in free keys
+        remove_free_key(new_fd);
         ret = new_fd;
     } else {
         ret = insert(file);
@@ -113,8 +113,7 @@ void xpn_file_table::clean() {
     }
 
     m_files.clear();
-    decltype(m_free_keys) empty;
-    m_free_keys.swap(empty);
+    m_free_keys.clear();
     secuencial_key = 1;
 }
 
@@ -137,5 +136,28 @@ void xpn_file_table::clean_vfhs() {
             vfh.reset();
         }
     }
+}
+
+void xpn_file_table::add_free_key(int key) {
+    m_free_keys.emplace_back(key);
+}
+
+int xpn_file_table::get_free_key() {
+    if (m_free_keys.empty()){
+        throw std::runtime_error("xpn_file_table::get_free_key needs keys in the free_keys");
+    }
+    int ret = m_free_keys.back();
+    m_free_keys.resize(m_free_keys.size()-1);
+    return ret;
+}
+
+void xpn_file_table::remove_free_key(int key) {
+    auto it = std::find(m_free_keys.begin(), m_free_keys.end(), key);
+    if (it == m_free_keys.end()) return;
+    
+    int index = std::distance(it, m_free_keys.begin());
+
+    std::swap(m_free_keys[index], m_free_keys[m_free_keys.size()-1]);
+    m_free_keys.resize(m_free_keys.size()-1);
 }
 }  // namespace XPN
