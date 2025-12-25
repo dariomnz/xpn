@@ -95,7 +95,7 @@ class args {
                     if ((i + 1) < m_args.size() && m_args[i + 1][0] != '-') {
                         // Check if there are more options
                         if (std::find_if(m_args.begin() + i + 1, m_args.end(),
-                                         [](const std::string_view& arg) { return arg[0] == '-'; }) != m_args.end()) {
+                                         [](std::string_view arg) { return arg[0] == '-'; }) != m_args.end()) {
                             std::cerr << "Error: parse option " << m_args[i] << " is a flag, encounter value "
                                       << m_args[i + 1] << std::endl;
                             help();
@@ -157,7 +157,7 @@ class args {
     }
 
     std::string_view get_option(const option& option_name) {
-        auto it = std::find_if(m_args.begin(), m_args.end(), [option_name](const std::string_view& value) {
+        auto it = std::find_if(m_args.begin(), m_args.end(), [option_name](std::string_view value) {
             return option_name.sort_name == value || option_name.long_name == value;
         });
         auto it_value = it + 1;
@@ -168,7 +168,7 @@ class args {
     }
 
     bool has_option(const option& option_name) {
-        auto it = std::find_if(m_args.begin(), m_args.end(), [option_name](const std::string_view& value) {
+        auto it = std::find_if(m_args.begin(), m_args.end(), [option_name](std::string_view value) {
             return option_name.sort_name == value || option_name.long_name == value;
         });
         if (it != m_args.end()) {

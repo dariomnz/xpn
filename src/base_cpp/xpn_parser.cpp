@@ -110,7 +110,7 @@ std::tuple<std::string_view, std::string_view, std::string_view, std::string_vie
     return {sv_protocol, sv_server, sv_server_port, sv_path};
 }
 
-std::string xpn_parser::create(const std::string_view& protocol, const std::string_view& server, const std::string_view& path) {
+std::string xpn_parser::create(std::string_view protocol, std::string_view server, std::string_view path) {
     std::stringstream ss;
     ss << protocol << "://" << server << "/" << path;
     return ss.str();

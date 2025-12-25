@@ -34,7 +34,7 @@
 namespace XPN
 {
 
-static inline uint32_t concatenate_path(char *dest, const std::string_view &str1, const std::string_view &str2) {
+static inline uint32_t concatenate_path(char *dest, std::string_view str1, std::string_view str2) {
   uint32_t length = 0;
   char *current_dest = dest;
   // Copy str1
@@ -56,7 +56,7 @@ static inline uint32_t concatenate_path(char *dest, const std::string_view &str1
 }
 
 // File API
-int nfi_xpn_server::nfi_open (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho)
+int nfi_xpn_server::nfi_open (std::string_view path, int flags, mode_t mode, xpn_fh &fho)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -88,13 +88,13 @@ int nfi_xpn_server::nfi_open (const std::string_view &path, int flags, mode_t mo
   return status.ret;
 }
 
-int nfi_xpn_server::nfi_create (const std::string_view &path, mode_t mode, xpn_fh &fho)
+int nfi_xpn_server::nfi_create (std::string_view path, mode_t mode, xpn_fh &fho)
 {
   //NOTE: actualy creat is not in use, it use like POSIX open(path, O_WRONLY|O_CREAT|O_TRUNC, mode);
   return nfi_open(path, O_WRONLY|O_CREAT|O_TRUNC, mode, fho);
 }
 
-int nfi_xpn_server::nfi_close (const std::string_view &path, const xpn_fh &fh)
+int nfi_xpn_server::nfi_close (std::string_view path, const xpn_fh &fh)
 {
   bool is_mqtt = false;
   if (m_comm->m_type == server_type::SCK) {
@@ -135,7 +135,7 @@ int nfi_xpn_server::nfi_close (const std::string_view &path, const xpn_fh &fh)
   }
 }
 
-int64_t nfi_xpn_server::nfi_read (const std::string_view &path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_xpn_server::nfi_read (std::string_view path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret, cont, diff;
   st_xpn_server_rw msg;
@@ -235,7 +235,7 @@ int64_t nfi_xpn_server::nfi_read (const std::string_view &path, const xpn_fh &fh
   return ret;
 }
 
-int64_t nfi_xpn_server::nfi_write (const std::string_view &path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_xpn_server::nfi_write (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
 {
   int ret, diff, cont;
   st_xpn_server_rw msg;
@@ -354,7 +354,7 @@ int64_t nfi_xpn_server::nfi_write (const std::string_view &path, const xpn_fh &f
   return ret;
 }
 
-int nfi_xpn_server::nfi_remove (const std::string_view &path, bool is_async)
+int nfi_xpn_server::nfi_remove (std::string_view path, bool is_async)
 {
   int ret;
   st_xpn_server_path msg;
@@ -385,7 +385,7 @@ int nfi_xpn_server::nfi_remove (const std::string_view &path, bool is_async)
   return ret;
 }
 
-int nfi_xpn_server::nfi_rename (const std::string_view &path, const std::string_view &new_path)
+int nfi_xpn_server::nfi_rename (std::string_view path, std::string_view new_path)
 {
   int ret;
   st_xpn_server_rename msg;
@@ -412,7 +412,7 @@ int nfi_xpn_server::nfi_rename (const std::string_view &path, const std::string_
   return ret;
 }
 
-int nfi_xpn_server::nfi_getattr (const std::string_view &path, struct ::stat &st)
+int nfi_xpn_server::nfi_getattr (std::string_view path, struct ::stat &st)
 {
   int ret;
   st_xpn_server_path msg;
@@ -440,7 +440,7 @@ int nfi_xpn_server::nfi_getattr (const std::string_view &path, struct ::stat &st
   return ret;
 }
 
-int nfi_xpn_server::nfi_setattr ([[maybe_unused]] const std::string_view &path, [[maybe_unused]] struct ::stat &st)
+int nfi_xpn_server::nfi_setattr ([[maybe_unused]] std::string_view path, [[maybe_unused]] struct ::stat &st)
 {
   debug_info("[SERV_ID="<<m_server<<"] [NFI_XPN] [nfi_xpn_server_setattr] >> Begin");
 
@@ -452,7 +452,7 @@ int nfi_xpn_server::nfi_setattr ([[maybe_unused]] const std::string_view &path, 
 }
 
 // Directories API
-int nfi_xpn_server::nfi_mkdir(const std::string_view &path, mode_t mode)
+int nfi_xpn_server::nfi_mkdir(std::string_view path, mode_t mode)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -486,7 +486,7 @@ int nfi_xpn_server::nfi_mkdir(const std::string_view &path, mode_t mode)
   return ret;
 }
 
-int nfi_xpn_server::nfi_opendir(const std::string_view &path, xpn_fh &fho)
+int nfi_xpn_server::nfi_opendir(std::string_view path, xpn_fh &fho)
 {
   int ret;
   st_xpn_server_path_flags msg;
@@ -517,7 +517,7 @@ int nfi_xpn_server::nfi_opendir(const std::string_view &path, xpn_fh &fho)
   return ret;
 }
 
-int nfi_xpn_server::nfi_readdir(const std::string_view &path, xpn_fh &fhd, struct ::dirent &entry)
+int nfi_xpn_server::nfi_readdir(std::string_view path, xpn_fh &fhd, struct ::dirent &entry)
 {
   int ret;
   st_xpn_server_readdir msg;
@@ -559,7 +559,7 @@ int nfi_xpn_server::nfi_readdir(const std::string_view &path, xpn_fh &fhd, struc
   return ret;
 }
 
-int nfi_xpn_server::nfi_closedir ([[maybe_unused]] const std::string_view &path, const xpn_fh &fhd)
+int nfi_xpn_server::nfi_closedir ([[maybe_unused]] std::string_view path, const xpn_fh &fhd)
 {
   if (xpn_env::get_instance().xpn_session_dir == 1){
     int ret;
@@ -589,7 +589,7 @@ int nfi_xpn_server::nfi_closedir ([[maybe_unused]] const std::string_view &path,
   }
 }
 
-int nfi_xpn_server::nfi_rmdir(const std::string_view &path, bool is_async)
+int nfi_xpn_server::nfi_rmdir(std::string_view path, bool is_async)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -621,7 +621,7 @@ int nfi_xpn_server::nfi_rmdir(const std::string_view &path, bool is_async)
   return ret;
 }
 
-int nfi_xpn_server::nfi_statvfs(const std::string_view &path, struct ::statvfs &inf)
+int nfi_xpn_server::nfi_statvfs(std::string_view path, struct ::statvfs &inf)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -649,7 +649,7 @@ int nfi_xpn_server::nfi_statvfs(const std::string_view &path, struct ::statvfs &
   return ret;
 }
 
-int nfi_xpn_server::nfi_read_mdata (const std::string_view &path, xpn_metadata &mdata)
+int nfi_xpn_server::nfi_read_mdata (std::string_view path, xpn_metadata &mdata)
 {
   int ret;
   struct st_xpn_server_path msg;
@@ -677,7 +677,7 @@ int nfi_xpn_server::nfi_read_mdata (const std::string_view &path, xpn_metadata &
   return ret;
 }
 
-int nfi_xpn_server::nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size)
+int nfi_xpn_server::nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size)
 {
   int ret;
   struct st_xpn_server_status req = {};

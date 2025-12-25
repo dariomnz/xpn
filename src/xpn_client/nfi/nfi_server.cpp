@@ -139,7 +139,7 @@ namespace XPN
         return res;
     }
 
-    bool nfi_server::is_local_server(const std::string_view &server)
+    bool nfi_server::is_local_server(std::string_view server)
     {
         return (server == ns::get_host_name() ||
                 server == ns::get_host_ip() ||

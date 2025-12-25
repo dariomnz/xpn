@@ -56,7 +56,7 @@ class FixedString {
     }
 
     void append(const std::string& str) { append(str.data(), str.size()); }
-    void append(const std::string_view& str) { append(str.data(), str.size()); }
+    void append(std::string_view str) { append(str.data(), str.size()); }
 
     void append(const char* src, size_t len) {
         const size_t space_left = Capacity - m_size;

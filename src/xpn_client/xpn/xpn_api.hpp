@@ -83,7 +83,7 @@ namespace XPN
         xpn_api(xpn_api&&) = delete;
         // Delete move assignment operator
         xpn_api& operator=(xpn_api&&) = delete;
-        std::string_view check_remove_part_from_path(const std::string_view &path, FixedStringPath &out_path);
+        std::string_view check_remove_part_from_path(std::string_view path, FixedStringPath &out_path);
     public:
         static xpn_api& get_instance()
         {

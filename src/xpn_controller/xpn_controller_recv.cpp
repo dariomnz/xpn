@@ -313,7 +313,7 @@ int xpn_controller::recv_expand_new(int socket) {
     std::vector<std::string_view> servers;
     servers.assign(old_servers.begin(), old_servers.end());
     // Remove the old servers to have the new servers append in to the end
-    auto it = std::remove_if(new_servers.begin(), new_servers.end(), [&old_servers](const std::string_view &srv) {
+    auto it = std::remove_if(new_servers.begin(), new_servers.end(), [&old_servers](std::string_view srv) {
         return std::find(old_servers.begin(), old_servers.end(), srv) != old_servers.end();
     });
     uint64_t num_erased = new_servers.end() - it;
@@ -419,7 +419,7 @@ int xpn_controller::recv_shrink_change(int socket) {
     std::vector<std::string_view> servers;
     servers.assign(old_servers.begin(), old_servers.end());
     // Remove the old servers to have the new servers append in to the end
-    auto it = std::remove_if(servers.begin(), servers.end(), [&to_remove_servers](const std::string_view &srv) {
+    auto it = std::remove_if(servers.begin(), servers.end(), [&to_remove_servers](std::string_view srv) {
         return std::find(to_remove_servers.begin(), to_remove_servers.end(), srv) != to_remove_servers.end();
     });
     uint64_t num_erased = servers.end() - it;

@@ -52,7 +52,7 @@ class GrowFixedString : private GrowFixedStringStorage<Capacity>, public std::pm
         this->append(s);
     }
 
-    GrowFixedString(const std::string_view& sv) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
+    GrowFixedString(std::string_view sv) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
         this->reserve(Capacity);
         this->append(sv);
     }

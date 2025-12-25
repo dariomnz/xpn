@@ -112,7 +112,7 @@ namespace XPN
         return socket::send_str(socket, std::string_view(str));
     }
 
-    int64_t socket::send_str ( int socket, const std::string_view& str )
+    int64_t socket::send_str ( int socket, std::string_view str )
     {
         int64_t ret;
         uint64_t size_str = str.size();

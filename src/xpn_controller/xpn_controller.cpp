@@ -26,7 +26,7 @@ namespace XPN {
 int xpn_controller::start() {
     action current_action = action::NONE;
     debug_info("[XPN_CONTROLLER] >> Start");
-    const std::string_view& act = m_args.get_arg(0);
+    std::string_view act = m_args.get_arg(0);
 
     for (auto& [key, value] : actions_str) {
         if (act == key) {

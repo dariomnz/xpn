@@ -49,7 +49,7 @@ namespace XPN
         virtual ~nfi_server() = default;
         int init_comm();
         int destroy_comm();
-        static bool is_local_server(const std::string_view &server);
+        static bool is_local_server(std::string_view server);
         
         static std::unique_ptr<nfi_server> Create(const std::string &url);
     public:
@@ -72,23 +72,23 @@ namespace XPN
 
     public:
         // Operations 
-        virtual int nfi_open        (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho) = 0; 
-        virtual int nfi_create      (const std::string_view &path, mode_t mode, xpn_fh &fho) = 0;
-        virtual int nfi_close       (const std::string_view &path, const xpn_fh &fh) = 0;
-        virtual int64_t nfi_read    (const std::string_view &path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) = 0;
-        virtual int64_t nfi_write   (const std::string_view &path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) = 0;
-        virtual int nfi_remove      (const std::string_view &path, bool is_async) = 0;
-        virtual int nfi_rename      (const std::string_view &path, const std::string_view &new_path) = 0;
-        virtual int nfi_getattr     (const std::string_view &path, struct ::stat &st) = 0;
-        virtual int nfi_setattr     (const std::string_view &path, struct ::stat &st) = 0;
-        virtual int nfi_mkdir       (const std::string_view &path, mode_t mode) = 0;
-        virtual int nfi_opendir     (const std::string_view &path, xpn_fh &fho) = 0;
-        virtual int nfi_readdir     (const std::string_view &path, xpn_fh &fh, struct ::dirent &entry) = 0;
-        virtual int nfi_closedir    (const std::string_view &path, const xpn_fh &fh) = 0;
-        virtual int nfi_rmdir       (const std::string_view &path, bool is_async) = 0;
-        virtual int nfi_statvfs     (const std::string_view &path, struct ::statvfs &inf) = 0;
-        virtual int nfi_read_mdata  (const std::string_view &path, xpn_metadata &mdata) = 0;
-        virtual int nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
+        virtual int nfi_open        (std::string_view path, int flags, mode_t mode, xpn_fh &fho) = 0; 
+        virtual int nfi_create      (std::string_view path, mode_t mode, xpn_fh &fho) = 0;
+        virtual int nfi_close       (std::string_view path, const xpn_fh &fh) = 0;
+        virtual int64_t nfi_read    (std::string_view path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) = 0;
+        virtual int64_t nfi_write   (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) = 0;
+        virtual int nfi_remove      (std::string_view path, bool is_async) = 0;
+        virtual int nfi_rename      (std::string_view path, std::string_view new_path) = 0;
+        virtual int nfi_getattr     (std::string_view path, struct ::stat &st) = 0;
+        virtual int nfi_setattr     (std::string_view path, struct ::stat &st) = 0;
+        virtual int nfi_mkdir       (std::string_view path, mode_t mode) = 0;
+        virtual int nfi_opendir     (std::string_view path, xpn_fh &fho) = 0;
+        virtual int nfi_readdir     (std::string_view path, xpn_fh &fh, struct ::dirent &entry) = 0;
+        virtual int nfi_closedir    (std::string_view path, const xpn_fh &fh) = 0;
+        virtual int nfi_rmdir       (std::string_view path, bool is_async) = 0;
+        virtual int nfi_statvfs     (std::string_view path, struct ::statvfs &inf) = 0;
+        virtual int nfi_read_mdata  (std::string_view path, xpn_metadata &mdata) = 0;
+        virtual int nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
 
         virtual int nfi_flush       (const char *path) = 0;
         virtual int nfi_preload     (const char *path) = 0;

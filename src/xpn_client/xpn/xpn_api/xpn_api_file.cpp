@@ -29,7 +29,7 @@
 
 namespace XPN
 {
-    std::string_view xpn_api::check_remove_part_from_path(const std::string_view& path, FixedStringPath& out_path)
+    std::string_view xpn_api::check_remove_part_from_path(std::string_view path, FixedStringPath& out_path)
     {
         std::string_view name_part = xpn_path::get_first_dir(path);
         // XPN_DEBUG("First dir "<<name_part);

@@ -167,10 +167,10 @@ int xpn_controller::local_mk_config() {
 }
 
 // TODO: allow use of hostlist, not only hostfile
-int xpn_controller::mk_config(const std::string_view& hostfile, [[maybe_unused]] const std::string_view& hostlist,
-                              const char* conffile, const std::string_view& bsize,
-                              const std::string_view& replication_level, const std::string_view& server_type,
-                              const std::string_view& storage_path) {
+int xpn_controller::mk_config(std::string_view hostfile, [[maybe_unused]] std::string_view hostlist,
+                              const char* conffile, std::string_view bsize,
+                              std::string_view replication_level, std::string_view server_type,
+                              std::string_view storage_path) {
     int ret;
     debug_info("[XPN_CONTROLLER] >> Start");
     if (hostfile.empty()) {

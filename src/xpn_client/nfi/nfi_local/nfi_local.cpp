@@ -31,7 +31,7 @@ namespace XPN
 {
 
 // File API
-int nfi_local::nfi_open (const std::string_view &path, int flags, mode_t mode, xpn_fh &fho)
+int nfi_local::nfi_open (std::string_view path, int flags, mode_t mode, xpn_fh &fho)
 {
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] >> Begin");
@@ -62,13 +62,13 @@ int nfi_local::nfi_open (const std::string_view &path, int flags, mode_t mode, x
   return 0;
 }
 
-int nfi_local::nfi_create (const std::string_view &path, mode_t mode, xpn_fh &fho)
+int nfi_local::nfi_create (std::string_view path, mode_t mode, xpn_fh &fho)
 {
   //NOTE: actualy creat is not in use, it use like POSIX open(path, O_WRONLY|O_CREAT|O_TRUNC, mode);
   return nfi_local::nfi_open(path, O_WRONLY|O_CREAT|O_TRUNC, mode, fho);
 }
 
-int nfi_local::nfi_close ([[maybe_unused]] const std::string_view &path, const xpn_fh &fh)
+int nfi_local::nfi_close ([[maybe_unused]] std::string_view path, const xpn_fh &fh)
 {
   if (xpn_env::get_instance().xpn_session_file == 1){
     int ret;
@@ -89,7 +89,7 @@ int nfi_local::nfi_close ([[maybe_unused]] const std::string_view &path, const x
   }
 }
 
-int64_t nfi_local::nfi_read (const std::string_view &path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_read (std::string_view path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
@@ -142,7 +142,7 @@ cleanup_nfi_local_read:
   return ret;
 }
 
-int64_t nfi_local::nfi_write (const std::string_view &path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_write (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
@@ -198,7 +198,7 @@ cleanup_nfi_local_write:
   return ret;
 }
 
-int nfi_local::nfi_remove (const std::string_view &path, [[maybe_unused]] bool is_async)
+int nfi_local::nfi_remove (std::string_view path, [[maybe_unused]] bool is_async)
 {
   int ret;
 
@@ -223,7 +223,7 @@ int nfi_local::nfi_remove (const std::string_view &path, [[maybe_unused]] bool i
   return ret;
 }
 
-int nfi_local::nfi_rename (const std::string_view &path, const std::string_view &new_path)
+int nfi_local::nfi_rename (std::string_view path, std::string_view new_path)
 {
   int  ret;
 
@@ -253,7 +253,7 @@ int nfi_local::nfi_rename (const std::string_view &path, const std::string_view 
   return ret;
 }
 
-int nfi_local::nfi_getattr (const std::string_view &path, struct ::stat &st)
+int nfi_local::nfi_getattr (std::string_view path, struct ::stat &st)
 {
   int  ret;
 
@@ -283,7 +283,7 @@ int nfi_local::nfi_getattr (const std::string_view &path, struct ::stat &st)
   return ret;
 }
 
-int nfi_local::nfi_setattr ([[maybe_unused]] const std::string_view &path, [[maybe_unused]] struct ::stat &st)
+int nfi_local::nfi_setattr ([[maybe_unused]] std::string_view path, [[maybe_unused]] struct ::stat &st)
 {
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_setattr] >> Begin");
 
@@ -295,7 +295,7 @@ int nfi_local::nfi_setattr ([[maybe_unused]] const std::string_view &path, [[may
 }
 
 // Directories API
-int nfi_local::nfi_mkdir(const std::string_view &path, mode_t mode)
+int nfi_local::nfi_mkdir(std::string_view path, mode_t mode)
 {
   int    ret;
 
@@ -321,7 +321,7 @@ int nfi_local::nfi_mkdir(const std::string_view &path, mode_t mode)
   return ret;
 }
 
-int nfi_local::nfi_opendir(const std::string_view &path, xpn_fh &fho)
+int nfi_local::nfi_opendir(std::string_view path, xpn_fh &fho)
 {
   DIR* s;
 
@@ -356,7 +356,7 @@ int nfi_local::nfi_opendir(const std::string_view &path, xpn_fh &fho)
   return 0;
 }
 
-int nfi_local::nfi_readdir(const std::string_view& path, xpn_fh &fhd, struct ::dirent &entry)
+int nfi_local::nfi_readdir(std::string_view path, xpn_fh &fhd, struct ::dirent &entry)
 {
   DIR* s;
   ::dirent *ent;
@@ -404,7 +404,7 @@ int nfi_local::nfi_readdir(const std::string_view& path, xpn_fh &fhd, struct ::d
   return 0;
 }
 
-int nfi_local::nfi_closedir ([[maybe_unused]] const std::string_view &path, const xpn_fh &fhd)
+int nfi_local::nfi_closedir ([[maybe_unused]] std::string_view path, const xpn_fh &fhd)
 {
   if (xpn_env::get_instance().xpn_session_dir == 1){
     int ret;
@@ -425,7 +425,7 @@ int nfi_local::nfi_closedir ([[maybe_unused]] const std::string_view &path, cons
   }
 }
 
-int nfi_local::nfi_rmdir(const std::string_view &path, [[maybe_unused]] bool is_async)
+int nfi_local::nfi_rmdir(std::string_view path, [[maybe_unused]] bool is_async)
 {
   int ret;
 
@@ -451,7 +451,7 @@ int nfi_local::nfi_rmdir(const std::string_view &path, [[maybe_unused]] bool is_
   return 0;
 }
 
-int nfi_local::nfi_statvfs(const std::string_view &path, struct ::statvfs &inf)
+int nfi_local::nfi_statvfs(std::string_view path, struct ::statvfs &inf)
 {
   int ret;
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_statfs] >> Begin");
@@ -471,7 +471,7 @@ int nfi_local::nfi_statvfs(const std::string_view &path, struct ::statvfs &inf)
   return ret;
 }
 
-int nfi_local::nfi_read_mdata (const std::string_view &path, xpn_metadata &mdata)
+int nfi_local::nfi_read_mdata (std::string_view path, xpn_metadata &mdata)
 {
   int ret, fd;
 
@@ -510,7 +510,7 @@ int nfi_local::nfi_read_mdata (const std::string_view &path, xpn_metadata &mdata
   return ret;
 }
 
-int nfi_local::nfi_write_mdata (const std::string_view &path, const xpn_metadata::data &mdata, bool only_file_size)
+int nfi_local::nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size)
 {
   int ret, fd;
 

@@ -112,9 +112,9 @@ class xpn_controller {
     std::string usage();
     int run();
     int local_mk_config();
-    int mk_config(const std::string_view& hostfile, const std::string_view& hostlist, const char* conffile, const std::string_view& bsize,
-                  const std::string_view& replication_level, const std::string_view& server_type,
-                  const std::string_view& storage_path);
+    int mk_config(std::string_view hostfile, std::string_view hostlist, const char* conffile, std::string_view bsize,
+                  std::string_view replication_level, std::string_view server_type,
+                  std::string_view storage_path);
     int update_config(const std::vector<std::string_view>& new_hostlist);
     int start_servers(bool await, int server_cores, bool debug);
     int stop_servers(bool await);
