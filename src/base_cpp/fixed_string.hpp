@@ -32,13 +32,17 @@ namespace XPN {
 template <size_t Capacity>
 class FixedString {
    private:
-    char m_data[Capacity + 1];
     size_t m_size = 0;
+    char m_data[Capacity + 1];
 
    public:
     FixedString() { clear(); }
 
     FixedString(const char* str) { assign(str); }
+
+    FixedString(std::string_view str) { append(str); }
+
+    FixedString(const std::string& str) { append(str); }
 
     void clear() {
         m_size = 0;

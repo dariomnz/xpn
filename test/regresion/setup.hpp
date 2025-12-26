@@ -124,31 +124,31 @@ class setup {
         std::vector<XPN::subprocess::process> server_processes;
 
         for (auto&& srv_url : part.server_urls) {
-            std::string protocol, server, port;
-            std::tie(protocol, server, port, std::ignore) = XPN::xpn_parser::parse(srv_url);
-            if (protocol.empty() || server.empty()) {
+            XPN::xpn_url url = XPN::xpn_parser::parse(srv_url);
+            if (url.protocol.empty() || url.server.empty()) {
                 std::cerr << "Error: cannot parse server url: '" << srv_url << "'" << std::endl;
                 exit(EXIT_FAILURE);
             }
             std::string server_type;
-            if (protocol == XPN::server_protocols::sck_server) {
+            if (url.protocol == XPN::server_protocols::sck_server) {
                 server_type = "sck";
-            } else if (protocol == XPN::server_protocols::fabric_server) {
+            } else if (url.protocol == XPN::server_protocols::fabric_server) {
                 server_type = "fabric";
-            } else if (protocol == XPN::server_protocols::mpi_server) {
+            } else if (url.protocol == XPN::server_protocols::mpi_server) {
                 server_type = "mpi";
             } else {
-                std::cerr << "Unsupported protocol to start a server in test " << protocol << std::endl;
+                std::cerr << "Unsupported protocol to start a server in test " << url.protocol << std::endl;
                 exit(EXIT_FAILURE);
             }
 
-            if (server != "localhost") {
-                std::cerr << "Unsupported server ip to start a server in test " << server << std::endl;
+            if (url.server != "localhost") {
+                std::cerr << "Unsupported server ip to start a server in test " << url.server << std::endl;
                 exit(EXIT_FAILURE);
             }
             std::string srv_commmand = "xpn_server -t pool -s " + server_type;
-            if (!port.empty()) {
-                srv_commmand += " --port " + port;
+            if (!url.port.empty()) {
+                srv_commmand += " --port ";
+                srv_commmand += url.port;
             }
             XPN::subprocess::process srv_process(srv_commmand, false);
             srv_process.set_wait_on_destroy(false);

@@ -34,7 +34,7 @@
 #include "nfi_sck_server/nfi_sck_server_comm.hpp"
 
 namespace XPN {
-std::unique_ptr<nfi_xpn_server_control_comm> nfi_xpn_server_control_comm::Create(const std::string &server_protocol) {
+std::unique_ptr<nfi_xpn_server_control_comm> nfi_xpn_server_control_comm::Create(std::string_view server_protocol) {
     if (server_protocol == server_protocols::mpi_server) {
 #ifdef ENABLE_MPI_SERVER
         return std::make_unique<nfi_mpi_server_control_comm>();

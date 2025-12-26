@@ -49,11 +49,11 @@ namespace actions
         comb_all,
     };
 
-    bool is_comb(const std::string& action){
+    bool is_comb(std::string_view action){
         const std::string to_find = "comb";
         return action.find(to_find) != std::string::npos;
     }
-    bool is_all(const std::string& action){
+    bool is_all(std::string_view action){
         const std::string to_find = "all";
         return action.find(to_find) != std::string::npos;
     }

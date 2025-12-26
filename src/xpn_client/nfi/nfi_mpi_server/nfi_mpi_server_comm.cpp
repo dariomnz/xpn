@@ -19,6 +19,7 @@
  *
  */
 
+#include "base_cpp/fixed_string.hpp"
 #include "base_cpp/socket.hpp"
 #include "base_cpp/ns.hpp"
 #include "nfi_mpi_server_comm.hpp"
@@ -115,7 +116,7 @@ nfi_mpi_server_control_comm::~nfi_mpi_server_control_comm() {
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_destroy] << End");
 }
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::control_connect(const std::string &srv_name, int srv_port) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::control_connect(std::string_view srv_name, int srv_port) {
     XPN_PROFILE_FUNCTION();
     int ret, err;
     int connection_socket;
@@ -171,18 +172,19 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::control_connec
     return connect(srv_name, port_name);
 }
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::connect([[maybe_unused]] const std::string &srv_name, const std::string &port_name) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_mpi_server_control_comm::connect([[maybe_unused]] std::string_view srv_name, std::string_view port_name) {
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_connect] Connect port "<<port_name);
     int ret;
     MPI_Comm out_comm;
     int connect_retries = 0;
     int errclass, resultlen;
+    FixedString<MPI_MAX_PORT_NAME> port = port_name;
     char err_buffer[MPI_MAX_ERROR_STRING];
     MPI_Info info;
     MPI_Info_create(&info);
     MPI_Info_set(info, "timeout", "1");
     do {
-        ret = MPI_Comm_connect(port_name.c_str(), MPI_INFO_NULL, 0, MPI_COMM_WORLD, &out_comm);
+        ret = MPI_Comm_connect(port.c_str(), MPI_INFO_NULL, 0, MPI_COMM_WORLD, &out_comm);
 
         MPI_Error_class(ret, &errclass);
         MPI_Error_string(ret, err_buffer, &resultlen);

@@ -43,7 +43,7 @@ struct profiler_data {
                   uint32_t duration)
         : m_pid(pid), m_tid(tid), m_name(name), m_start(start), m_duration(duration) {}
 
-    void dump_data(std::ostream& json, const std::string& process_name) const;
+    void dump_data(std::ostream& json, std::string_view process_name) const;
 };
 
 class profiler {
@@ -51,7 +51,7 @@ class profiler {
     profiler(const profiler&) = delete;
     profiler(profiler&&) = delete;
 
-    void begin_session(const std::string& name);
+    void begin_session(std::string_view name);
 
     void write_profile(std::variant<const char*, std::string> name, uint32_t start, uint32_t duration);
 

@@ -27,42 +27,46 @@
 #include "nfi/nfi_xpn_server/nfi_xpn_server.hpp"
 #include "nfi/nfi_local/nfi_local.hpp"
 
+#include <charconv>
 #include <iostream>
 #include <csignal>
 
 namespace XPN
 {
-    std::unique_ptr<nfi_server> nfi_server::Create(const std::string &url)
+    std::unique_ptr<nfi_server> nfi_server::Create(std::string_view url)
     {
-        xpn_parser parser(url);
+        xpn_url server_url = xpn_parser::parse(url);
         if (url.find(server_protocols::file) == 0 ||
-            (xpn_env::get_instance().xpn_locality == 1 && is_local_server(parser.m_server))){
-                return std::make_unique<nfi_local>(parser);
+            (xpn_env::get_instance().xpn_locality == 1 && is_local_server(server_url.server))){
+                return std::make_unique<nfi_local>(server_url);
             }
         if (url.find(server_protocols::mpi_server) == 0 ||
             url.find(server_protocols::sck_server) == 0 ||
             url.find(server_protocols::mqtt_server)  == 0 ||
             url.find(server_protocols::fabric_server) == 0 ){
-                return std::make_unique<nfi_xpn_server>(parser);
+                return std::make_unique<nfi_xpn_server>(server_url);
             }
         
         std::cerr << "Error: server protocol '"<< url << "' is not defined." << std::endl;
         return nullptr;
     }
 
-    nfi_server::nfi_server(const xpn_parser &parser) : m_url(parser.m_url)
+    nfi_server::nfi_server(xpn_url srv_url) : m_url(srv_url.url)
     {
-        m_protocol = parser.m_protocol;
-        m_server = parser.m_server;
-        if (parser.m_server_port.empty()) {
+        xpn_url url = xpn_parser::parse(m_url);
+        m_protocol = url.protocol;
+        m_server = url.server;
+        if (url.port.empty()) {
             m_server_port = DEFAULT_XPN_SERVER_CONTROL_PORT;
         }else{
-            m_server_port = atoi(std::string(parser.m_server_port).c_str());
-            if (m_server_port == 0){
+            int port = 0;
+            auto [ptr, ec] = std::from_chars(url.port.begin(), url.port.end(), port);
+            if (ec != std::errc()) {
                 m_server_port = DEFAULT_XPN_SERVER_CONTROL_PORT;
             }
+            m_server_port = port;
         }
-        m_path = parser.m_path;
+        m_path = url.path;
     }
 
     int nfi_server::init_comm()

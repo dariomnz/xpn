@@ -208,12 +208,15 @@ int xpn_controller::mk_config(std::string_view hostfile, [[maybe_unused]] std::s
         }
         std::string line;
         // Get the options or default op
-        std::string server_type_str = server_type.empty() ? XPN_CONF::DEFAULT_SERVER_TYPE : std::string(server_type);
-        std::string storage_path_str =
-            storage_path.empty() ? XPN_CONF::DEFAULT_STORAGE_PATH : std::string(storage_path);
+        std::string_view server_type_str = server_type.empty() ? XPN_CONF::DEFAULT_SERVER_TYPE : server_type;
+        std::string_view storage_path_str =
+            storage_path.empty() ? XPN_CONF::DEFAULT_STORAGE_PATH : storage_path;
         while (std::getline(file, line)) {
             if (!line.empty()) {
-                line = xpn_parser::create(server_type_str + "_server", line, storage_path_str);
+                FixedString<64> protocol = server_type_str;
+                protocol += "_server";
+                xpn_url url{.protocol=protocol, .server=line, .path=storage_path_str};
+                line = xpn_parser::create(url);
                 part.server_urls.emplace_back(line);
             }
             line.clear();
@@ -246,13 +249,13 @@ int xpn_controller::update_config(const std::vector<std::string_view>& new_hostl
     // TODO: doit for more than the first partition;
     xpn_conf::partition part = conf.partitions[0];
 
-    std::string protocol, path;
-    std::tie(protocol, std::ignore, std::ignore, path) = xpn_parser::parse(conf.partitions[0].server_urls[0]);
+    xpn_url url = xpn_parser::parse(conf.partitions[0].server_urls[0]);
 
     part.server_urls.clear();
     part.server_urls.reserve(new_hostlist.size());
     for (auto& srv : new_hostlist) {
-        part.server_urls.emplace_back(xpn_parser::create(protocol, std::string(srv), path));
+        xpn_url srv_url{.protocol=url.protocol, .server=srv, .path=url.path};
+        part.server_urls.emplace_back(xpn_parser::create(srv_url));
     }
 
     {
@@ -334,11 +337,9 @@ int xpn_controller::start_servers(bool await, int server_cores, bool debug) {
         }
         args.emplace_back("xpn_server");
         args.emplace_back("-s");
-        std::string protocol;
-        std::tie(protocol, std::ignore, std::ignore, std::ignore) =
-            xpn_parser::parse(conf.partitions[0].server_urls[0]);
-        uint64_t pos = protocol.find('_');
-        args.emplace_back(protocol.substr(0, pos));
+        xpn_url url = xpn_parser::parse(conf.partitions[0].server_urls[0]);
+        uint64_t pos = url.protocol.find('_');
+        args.emplace_back(url.protocol.substr(0, pos));
         args.emplace_back("-t");
         args.emplace_back("pool");
     } else {
@@ -504,7 +505,7 @@ int xpn_controller::ping_servers() {
 int xpn_controller::expand(const std::vector<std::string_view>& new_hostlist) {
     debug_info("[XPN_CONTROLLER] >> Start");
     xpn_conf conf;
-    std::vector<std::string> old_hosts = conf.partitions[0].server_urls;
+    auto old_hosts = conf.partitions[0].server_urls;
 
     int ret = stop_servers(true);
     if (ret < 0) {
@@ -538,9 +539,8 @@ int xpn_controller::expand(const std::vector<std::string_view>& new_hostlist) {
             args.emplace_back("xpn_expand");
             // Path of the servers
             // TODO: current restriction to have all the path the same
-            std::string path;
-            std::tie(std::ignore, std::ignore, std::ignore, path) = xpn_parser::parse(old_hosts[0]);
-            args.emplace_back(path);
+            xpn_url url = xpn_parser::parse(old_hosts[0]);
+            args.emplace_back(url.path);
             // Last size
             args.emplace_back(std::to_string(old_hosts.size()));
         } else {
@@ -592,7 +592,7 @@ int xpn_controller::expand(const std::vector<std::string_view>& new_hostlist) {
 int xpn_controller::shrink(const std::vector<std::string_view>& new_hostlist) {
     debug_info("[XPN_CONTROLLER] >> Start");
     xpn_conf conf;
-    std::vector<std::string> old_hosts = conf.partitions[0].server_urls;
+    auto old_hosts = conf.partitions[0].server_urls;
 
     std::vector<std::string> old_hostlist;
     get_conf_servers(old_hostlist);
@@ -629,9 +629,8 @@ int xpn_controller::shrink(const std::vector<std::string_view>& new_hostlist) {
             args.emplace_back("xpn_shrink");
             // Path of the servers
             // TODO: current restriction to have all the path the same
-            std::string path;
-            std::tie(std::ignore, std::ignore, std::ignore, path) = xpn_parser::parse(old_hosts[0]);
-            args.emplace_back(path);
+            xpn_url url = xpn_parser::parse(old_hosts[0]);
+            args.emplace_back(url.path);
             // The new list of servers
             std::stringstream new_servers_list;
             for (uint64_t i = 0; i < new_hostlist.size(); i++) {

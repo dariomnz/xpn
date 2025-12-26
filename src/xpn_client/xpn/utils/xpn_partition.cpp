@@ -25,12 +25,12 @@
 
 namespace XPN
 {
-        xpn_partition::xpn_partition(const std::string &name, int replication_level, uint64_t block_size) :
+        xpn_partition::xpn_partition(std::string_view name, int replication_level, uint64_t block_size) :
             m_name(name), m_replication_level(replication_level), m_block_size(block_size)
         {
         }
 
-        int xpn_partition::init_server(const std::string &url)
+        int xpn_partition::init_server(std::string_view url)
         {
             XPN_DEBUG_BEGIN;
             int res = 0;

@@ -21,12 +21,24 @@
 
 #pragma once
 
+#include <climits>
 #include <vector>
 #include <string>
 #include <sstream>
+#include "base_cpp/fixed_string.hpp"
+#include "base_cpp/grow_fixed_string.hpp"
+#include "base_cpp/grow_fixed_vector.hpp"
 
 namespace XPN
 {
+    struct xpn_url {
+        std::string_view url = "";
+        std::string_view protocol = "";
+        std::string_view server = "";
+        std::string_view port = "";
+        std::string_view path = "";
+    };
+
     namespace XPN_CONF
     {
         constexpr const char * TAG_PARTITION = "[partition]";
@@ -48,11 +60,11 @@ namespace XPN
     public:
         struct partition
         {
-            std::string partition_name = XPN_CONF::DEFAULT_PARTITION_NAME;
+            GrowFixedString<32> partition_name = XPN_CONF::DEFAULT_PARTITION_NAME;
             int bsize = XPN_CONF::DEFAULT_BLOCKSIZE;
             int replication_level = XPN_CONF::DEFAULT_REPLICATION_LEVEL;
-            std::string controler_url = XPN_CONF::DEFAULT_CONTROLER_URL;
-            std::vector<std::string> server_urls;
+            FixedString<HOST_NAME_MAX> controler_url = XPN_CONF::DEFAULT_CONTROLER_URL;
+            std::vector<GrowFixedString<64>> server_urls;
 
             std::string to_string() const
             {
@@ -83,6 +95,7 @@ namespace XPN
             return out.str();
         }
     public:
-        std::vector<partition> partitions;
+        // Normaly there are only one partition
+        GrowFixedVector<partition, 1> partitions;
     };
 }

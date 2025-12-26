@@ -159,9 +159,8 @@ class xpn_controller {
         out_servers.assign(conf.partitions[0].server_urls.begin(), conf.partitions[0].server_urls.end());
 
         for (auto& srv_url : out_servers) {
-            std::string server;
-            std::tie(std::ignore, server, std::ignore, std::ignore) = xpn_parser::parse(srv_url);
-            srv_url = server;
+            auto url = xpn_parser::parse(srv_url);
+            srv_url = url.server;
         }
 
 #ifdef DEBUG
@@ -185,7 +184,7 @@ class xpn_controller {
         return controller_url;
     }
 
-    static int send_command(const std::string& command, bool await = true) {
+    static int send_command(std::string_view command, bool await = true) {
         int socket = -1;
         int ret = -1;
         debug_info("[XPN_CONTROLLER] >> Start");
@@ -232,7 +231,7 @@ class xpn_controller {
         return ret_command;
     }
 
-    static int send_profiler(const std::string& profiler) {
+    static int send_profiler(std::string_view profiler) {
         int socket = -1;
         int ret = -1;
         debug_info("[XPN_CONTROLLER] >> Start");

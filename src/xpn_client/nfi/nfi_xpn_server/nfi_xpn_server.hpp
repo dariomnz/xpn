@@ -32,7 +32,7 @@ namespace XPN
     class nfi_xpn_server : public nfi_server
     {
     public:
-        nfi_xpn_server(const xpn_parser &parser) : nfi_server(parser) {}
+        nfi_xpn_server(xpn_url url) : nfi_server(url) {}
     public:
         // Operations 
         int nfi_open        (std::string_view path, int flags, mode_t mode, xpn_fh &fho) override;

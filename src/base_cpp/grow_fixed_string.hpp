@@ -21,63 +21,75 @@
 
 #pragma once
 
-#include <linux/limits.h>
-
-#include <cstddef>
-#include <memory_resource>
 #include <string>
+
+#include "grow_fixed_allocator.hpp"
 
 namespace XPN {
 
 template <size_t Capacity>
 struct GrowFixedStringStorage {
-    char m_buffer[Capacity + 1];
-    std::pmr::monotonic_buffer_resource m_pool;
+    InternalArena<Capacity + 1> m_arena;
+    GrowFixedAllocator<char, Capacity + 1> m_allocator;
 
-    // Default contructor
-    GrowFixedStringStorage() : m_pool(m_buffer, sizeof(m_buffer)) {}
+    GrowFixedStringStorage() : m_arena(), m_allocator(m_arena) {}
     // Copy contructor
-    GrowFixedStringStorage(const GrowFixedStringStorage&) : GrowFixedStringStorage() {}
+    GrowFixedStringStorage(const GrowFixedStringStorage &) : GrowFixedStringStorage() {}
     // Move contructor
-    GrowFixedStringStorage(GrowFixedStringStorage&&) noexcept : GrowFixedStringStorage() {}
+    GrowFixedStringStorage(GrowFixedStringStorage &&) noexcept : GrowFixedStringStorage() {}
 };
 
 template <size_t Capacity>
-class GrowFixedString : private GrowFixedStringStorage<Capacity>, public std::pmr::string {
-   public:
-    GrowFixedString() : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) { this->reserve(Capacity); }
+class GrowFixedString : public GrowFixedStringStorage<Capacity>,
+                       public std::basic_string<char, std::char_traits<char>, GrowFixedAllocator<char, Capacity + 1>> {
+    using AllocType = GrowFixedAllocator<char, Capacity + 1>;
+    using StringType = std::basic_string<char, std::char_traits<char>, AllocType>;
 
-    GrowFixedString(const char* s) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
+   public:
+    GrowFixedString() : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
         this->reserve(Capacity);
-        this->append(s);
     }
 
-    GrowFixedString(std::string_view sv) : GrowFixedStringStorage<Capacity>(), std::pmr::string(&(this->m_pool)) {
+    GrowFixedString(const char *text) : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
         this->reserve(Capacity);
-        this->append(sv);
+        this->append(text);
+    }
+
+    GrowFixedString(const std::string &text)
+        : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
+        this->reserve(Capacity);
+        this->append(text);
+    }
+
+    GrowFixedString(std::string_view text)
+        : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
+        this->reserve(Capacity);
+        this->append(text);
     }
 
     // Copy contructor
-    GrowFixedString(const GrowFixedString& other)
-        : GrowFixedStringStorage<Capacity>(), std::pmr::string(other, &(this->m_pool)) {
+    GrowFixedString(const GrowFixedString &other)
+        : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
         this->reserve(Capacity);
+        this->append(other);
     }
     // Move constructor
-    GrowFixedString(GrowFixedString&& other) noexcept
-        : GrowFixedStringStorage<Capacity>(), std::pmr::string(std::move(other), &(this->m_pool)) {
+    GrowFixedString(GrowFixedString &&other) noexcept
+        : GrowFixedStringStorage<Capacity>(), StringType(AllocType(this->m_allocator)) {
         this->reserve(Capacity);
+        this->append(other);
     }
     // Copy assigment
-    GrowFixedString& operator=(const GrowFixedString& other) {
+    GrowFixedString &operator=(const GrowFixedString &other) {
         if (this != &other) {
-            std::pmr::string::operator=(other);
+            StringType::operator=(other);
         }
         return *this;
     }
     // Move assigment
-    GrowFixedString& operator=(GrowFixedString&& other) noexcept {
+    GrowFixedString &operator=(GrowFixedString &&other) noexcept {
         if (this != &other) {
-            std::pmr::string::operator=(std::move(other));
+            StringType::operator=(std::move(other));
         }
         return *this;
     }

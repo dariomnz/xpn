@@ -63,8 +63,8 @@ namespace XPN
         static int server_create ( int port, int &out_socket );
         static int server_port ( int socket );
         static int server_accept ( int socket, int &out_conection_socket );
-        static int client_connect ( const std::string &srv_name, int port, int &out_socket );
-        static int client_connect ( const std::string &srv_name, int port, int timeout_ms, int &out_socket, int time_to_sleep_ms = 200 );
+        static int client_connect ( std::string_view srv_name, int port, int &out_socket );
+        static int client_connect ( std::string_view srv_name, int port, int timeout_ms, int &out_socket, int time_to_sleep_ms = 200 );
         static int close ( int socket );
 	};
 } // namespace XPN

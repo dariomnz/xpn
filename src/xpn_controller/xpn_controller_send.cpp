@@ -37,7 +37,7 @@ int xpn_controller::send_action(action act) {
     debug_info("[XPN_CONTROLLER] >> Start");
     xpn_conf conf;
     // TODO: do for more than the first partition
-    const std::string &url = conf.partitions[0].controler_url;
+    auto url = conf.partitions[0].controler_url;
     int ret;
     int socket;
     ret = socket::client_connect(url, socket::xpn_controller::DEFAULT_XPN_CONTROLLER_SCK_PORT, 5000, socket);

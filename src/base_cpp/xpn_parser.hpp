@@ -24,18 +24,12 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "base_cpp/xpn_conf.hpp"
 
 namespace XPN {
 class xpn_parser {
    public:
-    xpn_parser(const std::string& url);
-    static std::tuple<std::string_view, std::string_view, std::string_view, std::string_view> parse(const std::string& url);
-    static std::string create(std::string_view protocol, std::string_view server, std::string_view path);
-
-    const std::string m_url;
-    std::string_view m_protocol;
-    std::string_view m_server;
-    std::string_view m_server_port;
-    std::string_view m_path;
+    static xpn_url parse(std::string_view url);
+    static std::string create(xpn_url);
 };
 }  // namespace XPN

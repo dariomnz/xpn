@@ -347,9 +347,8 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
     std::vector<std::string> hostnames;
     std::vector<const char *> hostnames_c_str;
     for (auto &&srv_url : conf.partitions[0].server_urls) {
-        std::string server;
-        std::tie(std::ignore, server, std::ignore, std::ignore) = xpn_parser::parse(srv_url);
-        hostnames.emplace_back(server);
+        xpn_url url = xpn_parser::parse(srv_url);
+        hostnames.emplace_back(url.server);
     }
 
     for (auto &&hostname : hostnames) {
@@ -627,9 +626,8 @@ void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn
     std::vector<std::string> hostnames;
     std::vector<const char *> hostnames_c_str;
     for (auto &&srv_url : conf.partitions[0].server_urls) {
-        std::string server;
-        std::tie(std::ignore, server, std::ignore, std::ignore) = xpn_parser::parse(srv_url);
-        hostnames.emplace_back(server);
+        xpn_url url = xpn_parser::parse(srv_url);
+        hostnames.emplace_back(url.server);
     }
 
     for (auto &&hostname : hostnames) {

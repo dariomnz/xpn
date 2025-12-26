@@ -20,6 +20,7 @@
  */
 
 #include "socket.hpp"
+#include "base_cpp/fixed_string.hpp"
 #include "base_cpp/xpn_env.hpp"
 #include "base_cpp/debug.hpp"
 #include "base_cpp/filesystem.hpp"
@@ -293,7 +294,7 @@ namespace XPN
         }
     }
 
-    int resolve_hostname(const std::string &srv_name, int port, sockaddr_storage* pAddr)
+    int resolve_hostname(const char *srv_name, int port, sockaddr_storage* pAddr)
     {
         int ret;
         addrinfo* pResultList = NULL;
@@ -302,8 +303,9 @@ namespace XPN
 
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_protocol = IPPROTO_TCP;
-        auto port_str = std::to_string(port);
-        ret = ::getaddrinfo(srv_name.c_str(), port_str.c_str(), &hints, &pResultList);
+        char port_str[10] = {};
+        std::snprintf(port_str, 9, "%d", port);
+        ret = ::getaddrinfo(srv_name, port_str, &hints, &pResultList);
         debug_info("getaddrinfo("<<srv_name<<") = "<<ret<<(ret < 0 ? gai_strerror(ret) : ""));
 
         result = (ret == 0) ? 1 : -1;
@@ -325,11 +327,12 @@ namespace XPN
         return result;
     }
 
-    int socket::client_connect ( const std::string &srv_name, int port, int &out_socket )
+    int socket::client_connect ( std::string_view srv_name, int port, int &out_socket )
     {
         int client_fd;
         struct sockaddr_storage serv_addr;
-        int ret = resolve_hostname(srv_name, port, &serv_addr);
+        FixedString<HOST_NAME_MAX> name(srv_name);
+        int ret = resolve_hostname(name.c_str(), port, &serv_addr);
         if (ret < 0) {
             debug_error("[SOCKET] [socket::client_connect] ERROR: resolve_hostname");
             return -1;
@@ -356,7 +359,7 @@ namespace XPN
         return 0;
     }
 
-    int socket::client_connect ( const std::string &srv_name, int port, int timeout_ms, int &out_socket, int time_to_sleep_ms )
+    int socket::client_connect ( std::string_view srv_name, int port, int timeout_ms, int &out_socket, int time_to_sleep_ms )
     {
         int ret = -1;
         auto start = std::chrono::high_resolution_clock::now();

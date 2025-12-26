@@ -19,63 +19,40 @@
  *
  */
 
+#include "xpn_parser.hpp"
+
 #include <csignal>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 
-#include "xpn_parser.hpp"
 #include "base_cpp/debug.hpp"
 #include "base_cpp/xpn_conf.hpp"
 #include "base_cpp/xpn_env.hpp"
 
 namespace XPN {
 
-xpn_parser::xpn_parser(const std::string& url) : m_url(url) {
+xpn_url xpn_parser::parse(std::string_view url) {
     XPN_DEBUG_BEGIN;
     int res = 0;
-
-    std::tie(m_protocol, m_server, m_server_port, m_path) = parse(m_url);
-
-    if (m_protocol.empty()) {
-        std::cerr << "Error cannot parse protocol of url '" << m_url << "'" << std::endl;
-        std::raise(SIGTERM);
-    }
-    if (m_server.empty()) {
-        std::cerr << "Error cannot parse server of url '" << m_url << "'" << std::endl;
-        std::raise(SIGTERM);
-    }
-    if (m_path.empty()) {
-        std::cerr << "Error cannot parse path of url '" << m_url << "'" << std::endl;
-        std::raise(SIGTERM);
-    }
-    XPN_DEBUG_END;
-}
-
-std::tuple<std::string_view, std::string_view, std::string_view, std::string_view> xpn_parser::parse(const std::string& url) {
-    XPN_DEBUG_BEGIN;
-    int res = 0;
-    std::string_view sv_url(url);
-    std::string_view sv_protocol;
-    std::string_view sv_server;
-    std::string_view sv_server_port;
-    std::string_view sv_path;
+    xpn_url result;
+    result.url = url;
     // Find the position of "://"
-    uint64_t protocol_pos = sv_url.find("://");
+    uint64_t protocol_pos = url.find("://");
     if (protocol_pos == std::string_view::npos) {
         std::cerr << "Invalid format of server_url: '://' not found '" << url << "'" << std::endl;
     } else {
         // Extract the first part (before "://")
-        sv_protocol = sv_url.substr(0, protocol_pos);
+        result.protocol = url.substr(0, protocol_pos);
 
         // Extract the second part (after "://")
-        std::string_view remainder = sv_url.substr(protocol_pos + 3);
+        std::string_view remainder = url.substr(protocol_pos + 3);
 
         // Find the position of the first ':'
         uint64_t port_pos = remainder.find_last_of(':');
         if (port_pos == std::string_view::npos) {
-            sv_server_port = "";
+            result.port = "";
 
             // Find the position of the first '/'
             uint64_t ip_pos = remainder.find('/');
@@ -83,13 +60,13 @@ std::tuple<std::string_view, std::string_view, std::string_view, std::string_vie
                 std::cerr << "Invalid format: '/' not found after IP '" << url << "'" << std::endl;
             } else {
                 // Extract the IP address
-                sv_server = remainder.substr(0, ip_pos);
+                result.server = remainder.substr(0, ip_pos);
                 // Extract the path (after the first '/')
-                sv_path = remainder.substr(ip_pos);
+                result.path = remainder.substr(ip_pos);
             }
-        }else{
+        } else {
             // Extract the IP address
-            sv_server = remainder.substr(0, port_pos);
+            result.server = remainder.substr(0, port_pos);
             remainder = remainder.substr(port_pos + 1);
 
             // Find the position of the first '/'
@@ -98,21 +75,26 @@ std::tuple<std::string_view, std::string_view, std::string_view, std::string_vie
                 std::cerr << "Invalid format: '/' not found after IP '" << url << "'" << std::endl;
             } else {
                 // Extract the IP address
-                sv_server_port = remainder.substr(0, ip_pos);
+                result.port = remainder.substr(0, ip_pos);
                 // Extract the path (after the first '/')
-                sv_path = remainder.substr(ip_pos);
+                result.path = remainder.substr(ip_pos);
             }
         }
     }
 
-    XPN_DEBUG("Parse '" << sv_url << "' to protocol '" << sv_protocol << "' server '" << sv_server << "' port '" << sv_server_port << "' path '" << sv_path << "'");
+    XPN_DEBUG("Parse '" << url << "' to protocol '" << result.protocol << "' server '" << result.server << "' port '"
+                        << result.port << "' path '" << result.path << "'");
     XPN_DEBUG_END;
-    return {sv_protocol, sv_server, sv_server_port, sv_path};
+    return result;
 }
 
-std::string xpn_parser::create(std::string_view protocol, std::string_view server, std::string_view path) {
+std::string xpn_parser::create(xpn_url url) {
     std::stringstream ss;
-    ss << protocol << "://" << server << "/" << path;
+    ss << url.protocol << "://" << url.server;
+    if (!url.port.empty()) {
+        ss << ":" << url.port;
+    }
+    ss << "/" << url.path;
     return ss.str();
 }
 }  // namespace XPN

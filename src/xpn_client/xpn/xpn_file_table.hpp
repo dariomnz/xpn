@@ -68,7 +68,7 @@ namespace XPN
         std::string to_string();
 
         void clean();
-        void init_vfhs(const str_unordered_map<std::string, xpn_partition>& partitions);
+        void init_vfhs(str_unordered_map<std::string, xpn_partition>& partitions);
         void clean_vfhs();
 
     private:

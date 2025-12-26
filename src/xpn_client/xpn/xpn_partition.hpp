@@ -33,7 +33,7 @@ class nfi_server;
 
 class xpn_partition {
    public:
-    xpn_partition(const std::string& name, int replication_level, uint64_t block_size);
+    xpn_partition(std::string_view name, int replication_level, uint64_t block_size);
     // Delete default constructors
     xpn_partition() = delete;
     // Delete copy constructor
@@ -44,10 +44,10 @@ class xpn_partition {
     xpn_partition(xpn_partition&&) = delete;
     // Delete move assignment operator
     xpn_partition& operator=(xpn_partition&&) = delete;
-    int init_server(const std::string& url);
+    int init_server(std::string_view url);
 
    public:
-    std::string m_name;                                             // name of partition
+    GrowFixedString<32> m_name;                                             // name of partition
     int m_replication_level = XPN_CONF::DEFAULT_REPLICATION_LEVEL;  // replication_level of files :0, 1, 2,...
     uint64_t m_block_size = XPN_CONF::DEFAULT_BLOCKSIZE;            // size of distribution used
 

@@ -24,6 +24,7 @@
 #include "base_cpp/debug.hpp"
 #include "base_cpp/socket.hpp"
 #include "base_cpp/ns.hpp"
+#include <charconv>
 #include <csignal>
 #include <xpn_server/xpn_server_ops.hpp>
 
@@ -33,7 +34,7 @@
 
 namespace XPN {
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connect ( const std::string &srv_name, int srv_port )
+std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connect ( std::string_view srv_name, int srv_port )
 {
   int ret;
   int connection_socket;
@@ -70,7 +71,7 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connec
   socket::close(connection_socket);
 
   if (ret < 0) {
-    printf("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: Lookup %s Port %s\n", srv_name.c_str(), port_name);
+    printf("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: Lookup %.*s Port %s\n", static_cast<int>(srv_name.size()), srv_name.data(), port_name);
     return nullptr;
   }
 
@@ -80,14 +81,18 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connec
   return connect(srv_name, port_name);
 }
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::connect(const std::string &srv_name, const std::string& port_name) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::connect(std::string_view srv_name, std::string_view port_name) {
   int ret, sd;
   // Connect...
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] Connect port "<<port_name);
-
-  ret = socket::client_connect(srv_name, atoi(port_name.c_str()), sd);
+  int port = 0;
+  auto [ptr, ec] = std::from_chars(port_name.begin(), port_name.end(), port);
+  if (ec != std::errc()) {
+    port = 0;
+  }
+  ret = socket::client_connect(srv_name, port, sd);
   if (ret < 0) {
-    fprintf(stderr, "[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: client_connect(%s,%s)\n", srv_name.c_str(), port_name.c_str());
+    fprintf(stderr, "[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: client_connect(%.*s,%.*s)\n",static_cast<int>(srv_name.size()), srv_name.data(), static_cast<int>(port_name.size()), port_name.data());
     return nullptr;
   }
 

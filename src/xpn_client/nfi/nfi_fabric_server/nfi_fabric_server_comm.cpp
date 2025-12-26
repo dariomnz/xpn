@@ -20,17 +20,19 @@
  */
 
 #include "nfi_fabric_server_comm.hpp"
+#include "base_cpp/fixed_string.hpp"
 #include "xpn_server/xpn_server_params.hpp"
 #include "base_cpp/debug.hpp"
 #include "base_cpp/socket.hpp"
 #include "base_cpp/ns.hpp"
+#include <charconv>
 #include <csignal>
 #include <xpn_server/xpn_server_ops.hpp>
 #include "lfi.h"
 
 namespace XPN {
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_connect ( const std::string &srv_name, int svr_port )
+std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_connect ( std::string_view srv_name, int svr_port )
 {
   XPN_PROFILE_FUNCTION();
   int ret;
@@ -64,17 +66,22 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_con
   socket::close(connection_socket);
 
   if (ret < 0) {
-    printf("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: Lookup %s Port %s\n", srv_name.c_str(), port_name);
+    printf("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: Lookup %.*s Port %s\n",static_cast<int>(srv_name.size()), srv_name.data(), port_name);
     return nullptr;
   }
 
   return connect(srv_name, port_name);
 }
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::connect(const std::string &srv_name, const std::string &port_name) {
+std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::connect(std::string_view srv_name, std::string_view port_name) {
   debug_info("[NFI_FABRIC_SERVER_COMM] ----SERVER = "<<srv_name<<" PORT = "<<port_name);
-
-  int new_comm = lfi_client_create(srv_name.c_str(), atoi(port_name.c_str()));
+  int port = 0;
+  auto [ptr, ec] = std::from_chars(port_name.begin(), port_name.end(), port);
+  if (ec != std::errc()) {
+    port = 0;
+  }
+  FixedString<HOST_NAME_MAX> name(srv_name);
+  int new_comm = lfi_client_create(name.c_str(), port);
 
   if (new_comm < 0)
   {

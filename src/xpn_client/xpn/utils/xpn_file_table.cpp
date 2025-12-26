@@ -117,7 +117,7 @@ void xpn_file_table::clean() {
     secuencial_key = 1;
 }
 
-void xpn_file_table::init_vfhs(const str_unordered_map<std::string, xpn_partition>& partitions) {
+void xpn_file_table::init_vfhs(str_unordered_map<std::string, xpn_partition>& partitions) {
     std::unique_lock lock(m_mutex);
     for (auto &[key, file] : m_files) {
         if (partitions.size() > 1){

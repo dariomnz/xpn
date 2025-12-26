@@ -45,18 +45,18 @@ namespace XPN
     class nfi_server 
     {
     public:
-        nfi_server(const xpn_parser &url);
+        nfi_server(xpn_url url);
         virtual ~nfi_server() = default;
         int init_comm();
         int destroy_comm();
         static bool is_local_server(std::string_view server);
         
-        static std::unique_ptr<nfi_server> Create(const std::string &url);
+        static std::unique_ptr<nfi_server> Create(std::string_view url);
     public:
-        std::string m_protocol; // protocol of the server: mpi_server sck_server
-        std::string m_server;   // server address
+        std::string_view m_protocol; // protocol of the server: mpi_server sck_server
+        std::string_view m_server;   // server address
         int m_server_port;      // server port
-        std::string m_path;     // path of the server
+        std::string_view m_path;     // path of the server
 
         std::string m_connectionless_port = {}; // port for the connectionless socket
 

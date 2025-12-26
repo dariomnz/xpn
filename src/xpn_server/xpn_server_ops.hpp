@@ -118,7 +118,7 @@ static const std::array<std::string, static_cast<uint64_t>(xpn_server_ops::size)
     "size",
 };
 
-static inline const std::string &xpn_server_ops_name(xpn_server_ops op) {
+static inline const std::string_view xpn_server_ops_name(xpn_server_ops op) {
     return xpn_server_ops_names[static_cast<uint64_t>(op)];
 }
 

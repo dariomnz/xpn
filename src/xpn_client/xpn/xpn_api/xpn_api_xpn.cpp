@@ -67,7 +67,7 @@ int xpn_api::init() {
             std::cerr << "Error: cannot create xpn_partition" << std::endl;
             std::raise(SIGTERM);
         }
-        auto &xpn_part = m_partitions.at(part.partition_name);
+        auto &xpn_part = key->second;
         int server_with_error = 0;
         for (const auto &srv_url : part.server_urls) {
             res = xpn_part.init_server(srv_url);
@@ -120,7 +120,7 @@ int xpn_api::print_partitions() {
     for (auto &[key, part] : m_partitions) {
         printf("Partition %s:\n", part.m_name.c_str());
         for (auto &serv : part.m_data_serv) {
-            printf("  %s\n", serv->m_server.c_str());
+            printf("  %.*s\n", static_cast<int>(serv->m_server.size()), serv->m_server.data());
         }
     }
     return 0;

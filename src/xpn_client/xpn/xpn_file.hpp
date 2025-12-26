@@ -79,11 +79,11 @@ namespace XPN
     class xpn_file
     {
     public:
-        xpn_file(std::string_view path, const xpn_partition &part) : m_path(path), m_part(part), m_mdata(*this) 
+        xpn_file(std::string_view path, xpn_partition &part) : m_path(path), m_part(part), m_mdata(*this) 
         {
             m_data_vfh.resize(m_part.m_data_serv.size());
         }
-        static std::shared_ptr<xpn_file> change_part(std::shared_ptr<xpn_file>& file, const xpn_partition &new_part) {
+        static std::shared_ptr<xpn_file> change_part(std::shared_ptr<xpn_file>& file, xpn_partition &new_part) {
             auto new_file = std::make_shared<xpn_file>(file->m_path, new_part);
             new_file->m_type = file->m_type;
             new_file->m_links = file->m_links;
@@ -112,12 +112,12 @@ namespace XPN
         int  initialize_vfh_dir(int index);
 
     public:
-        GrowFixedString<128> m_path;                 // absolute path
+        GrowFixedString<128> m_path;        // absolute path
         file_type m_type = file_type::null; // indicate FILE or DIR
         int m_links = 0;                    // number of links that this file has
         int m_flags = 0;                    // O_RDONLY, O_WRONLY,....    
         mode_t m_mode = 0;                  // S_IRUSR , S_IWUSR ,....  
-        const xpn_partition &m_part;              // partition
+        xpn_partition &m_part;              // partition
         xpn_metadata m_mdata;               // metadata
         int64_t m_offset = 0;                 // offset of the open file
         std::vector<xpn_fh> m_data_vfh;     // virtual FH

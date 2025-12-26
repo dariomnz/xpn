@@ -20,125 +20,134 @@
  */
 
 #include "base_cpp/xpn_conf.hpp"
-#include "base_cpp/xpn_env.hpp"
-#include "base_cpp/debug.hpp"
 
-#include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
+#include <charconv>
 #include <csignal>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
 
-namespace XPN
-{
-    inline void trim(std::string& str)
-    {
-        str.erase(str.find_last_not_of(" \t\n\r")+1);
-        str.erase(0, str.find_first_not_of(" \t\n\r"));
+#include "base_cpp/debug.hpp"
+#include "base_cpp/xpn_env.hpp"
+
+namespace XPN {
+
+inline std::string_view trim(std::string_view sv) {
+    auto start = sv.find_first_not_of(" \t\n\r");
+    if (start == std::string_view::npos) return "";
+    auto end = sv.find_last_not_of(" \t\n\r");
+    return sv.substr(start, end - start + 1);
+}
+
+inline int getSizeFactor(std::string_view name) {
+    if (name.empty()) return 0;
+
+    constexpr int KB = 1024;
+    constexpr int MB = 1024 * KB;
+    constexpr int GB = 1024 * MB;
+
+    int value = 0;
+
+    auto [ptr, ec] = std::from_chars(name.begin(), name.end(), value);
+    if (ec != std::errc()) {
+        return -1;
     }
 
-    inline int getSizeFactor(const std::string &name)
-    {
-        constexpr int KB = 1024;
-        constexpr int MB = 1024 * KB;
-        constexpr int GB = 1024 * MB;
-        switch(name.back())
-	    {
-            case 'K':
-            case 'k':
-                return atoi(name.c_str())*KB;
-            case 'M':
-            case 'm':
-                return atoi(name.c_str())*MB;
-            case 'G':
-            case 'g':
-                return atoi(name.c_str())*GB;
-            case 'B':
-            case 'b':
-                switch(name[name.size()-2]){
-                    case 'K':
-                    case 'k':
-                        return atoi(name.c_str())*KB;
-                    case 'M':
-                    case 'm':
-                        return atoi(name.c_str())*MB;
-                    case 'G':
-                    case 'g':
-                        return atoi(name.c_str())*GB;
-                    default:
-                        return 1;
-                }
-            default:
-                return atoi(name.c_str());
-        }
-      }
+    std::string_view suffix = trim(std::string_view(ptr, (name.data() + name.size()) - ptr));
 
-    xpn_conf::xpn_conf()
-    {   
-        // XPN_DEBUG_BEGIN;
-        const char * cfile_path = xpn_env::get_instance().xpn_conf;
-        if (cfile_path == nullptr)
-        {
-            std::cerr << "Error: there is no env variable XPN_CONF" << std::endl;
-            std::raise(SIGTERM);
-        }
-        std::ifstream file(cfile_path);
-        
-        if (!file.is_open()) {
-            std::cerr << "Error: while openning the XPN_CONF file: " << cfile_path << std::endl;
-            std::raise(SIGTERM);
-        }
-        std::string line;
-        int actual_index = -1;
-        while (std::getline(file, line)) {
-            trim(line);
-            // First check if have TAG_PARTITION and each create a new partition
-            if (line == XPN_CONF::TAG_PARTITION){
-                partitions.emplace_back();
-                actual_index++;
-            }
-
-            if (actual_index == -1){
-                std::cerr << "Error: while parsing the XPN_CONF file: " << cfile_path << " not found " << XPN_CONF::TAG_PARTITION << std::endl;
-                std::cerr << "Error: line '" << line << "'" << std::endl;
-                std::raise(SIGTERM);
-            }
-
-            // In each partition read each line to get keys and values
-            std::stringstream ss(line);
-            std::string key, value;
-
-            if (std::getline(ss, key, '=') && std::getline(ss, value)) {
-                trim(key);
-                trim(value);
-
-                if (key == XPN_CONF::TAG_PARTITION_NAME){
-                    partitions[actual_index].partition_name = value;
-                }else
-                if (key == XPN_CONF::TAG_CONTROLER_URL){
-                    partitions[actual_index].controler_url = value;
-                }else
-                if (key == XPN_CONF::TAG_BLOCKSIZE){
-                    partitions[actual_index].bsize = getSizeFactor(value);
-                }else
-                if (key == XPN_CONF::TAG_REPLICATION_LEVEL){
-                    partitions[actual_index].replication_level = atoi(value.c_str());
-                }else
-                if (key == XPN_CONF::TAG_SERVER_URL){
-                    partitions[actual_index].server_urls.emplace_back(value);
-                }else{
-                    std::cerr << "Error: key '" << key << "' is not expected" << std::endl;
-                    std::raise(SIGTERM);
-                }
-            }
-        }
-
-        XPN_DEBUG(to_string());
-        if (partitions.size()==0){
-            std::cerr << "Error: while parsing the XPN_CONF file: " << cfile_path << " not found any partition" << std::endl;
-            std::raise(SIGTERM);
-        }
-        // int res = 0;
-        // XPN_DEBUG_END;
+    if (suffix.empty()) return value;
+    char unit = suffix[0];
+    switch (unit) {
+        case 'K':
+        case 'k':
+            return value * KB;
+        case 'M':
+        case 'm':
+            return value * MB;
+        case 'G':
+        case 'g':
+            return value * GB;
+        case 'B':
+        case 'b':
+            return value;
+        default:
+            return value;
     }
 }
+
+xpn_conf::xpn_conf() {
+    const char* cfile_path = xpn_env::get_instance().xpn_conf;
+    if (cfile_path == nullptr) {
+        std::cerr << "Error: no env variable XPN_CONF" << std::endl;
+        std::raise(SIGTERM);
+    }
+
+    char file_buffer[4096];
+    char line_buffer[1024];
+
+    std::ifstream file;
+    file.rdbuf()->pubsetbuf(file_buffer, sizeof(file_buffer));
+
+    file.open(cfile_path);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << cfile_path << std::endl;
+        std::raise(SIGTERM);
+    }
+
+    int actual_index = -1;
+
+    while (file.getline(line_buffer, sizeof(line_buffer))) {
+        std::string_view sv = trim(line_buffer);
+        if (sv.empty()) continue;
+
+        if (sv == XPN_CONF::TAG_PARTITION) {
+            partitions.emplace_back();
+            actual_index++;
+            continue;
+        }
+
+        if (actual_index == -1) {
+            std::cerr << "Error: " << XPN_CONF::TAG_PARTITION << " not found before data" << std::endl;
+            std::raise(SIGTERM);
+        }
+
+        size_t sep = sv.find('=');
+        if (sep != std::string_view::npos) {
+            std::string_view key = trim(sv.substr(0, sep));
+            std::string_view value = trim(sv.substr(sep + 1));
+
+            if (key == XPN_CONF::TAG_PARTITION_NAME) {
+                partitions[actual_index].partition_name = value;
+            } else if (key == XPN_CONF::TAG_CONTROLER_URL) {
+                partitions[actual_index].controler_url = value;
+            } else if (key == XPN_CONF::TAG_BLOCKSIZE) {
+                auto res = getSizeFactor(value);
+                if (res < 0) {
+                    std::cerr << "Error: Invalid number format for BlockSize: " << value << std::endl;
+                    std::raise(SIGTERM);
+                }
+                partitions[actual_index].bsize = res;
+            } else if (key == XPN_CONF::TAG_REPLICATION_LEVEL) {
+                int pl = 0;
+                auto [ptr, ec] = std::from_chars(value.begin(), value.end(), pl);
+                if (ec != std::errc()) {
+                    std::cerr << "Error: Invalid replication level: " << value << std::endl;
+                    std::raise(SIGTERM);
+                }
+                partitions[actual_index].replication_level = pl;
+            } else if (key == XPN_CONF::TAG_SERVER_URL) {
+                partitions[actual_index].server_urls.emplace_back(value);
+            } else {
+                std::cerr << "Error: unexpected key '" << key << "'" << std::endl;
+                std::raise(SIGTERM);
+            }
+        }
+    }
+
+    if (partitions.empty()) {
+        std::cerr << "Error: No partitions found in " << cfile_path << std::endl;
+        std::raise(SIGTERM);
+    }
+}
+}  // namespace XPN

@@ -51,10 +51,10 @@ namespace XPN
     public:
         virtual ~nfi_xpn_server_control_comm() = default;
 
-        virtual std::unique_ptr<nfi_xpn_server_comm> control_connect(const std::string& srv_name, int srv_port) = 0;
-        virtual std::unique_ptr<nfi_xpn_server_comm> connect(const std::string& srv_name, const std::string& port_name) = 0;
+        virtual std::unique_ptr<nfi_xpn_server_comm> control_connect(std::string_view srv_name, int srv_port) = 0;
+        virtual std::unique_ptr<nfi_xpn_server_comm> connect(std::string_view srv_name, std::string_view port_name) = 0;
         virtual void disconnect(std::unique_ptr<nfi_xpn_server_comm>& comm, bool needSendCode = true) = 0;
 
-        static std::unique_ptr<nfi_xpn_server_control_comm> Create(const std::string& server_protocol);
+        static std::unique_ptr<nfi_xpn_server_control_comm> Create(std::string_view server_protocol);
     };
 } // namespace XPN

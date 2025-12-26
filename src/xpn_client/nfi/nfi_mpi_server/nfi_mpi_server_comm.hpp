@@ -50,8 +50,8 @@ namespace XPN
     nfi_mpi_server_control_comm();
     ~nfi_mpi_server_control_comm();
     
-    std::unique_ptr<nfi_xpn_server_comm> control_connect(const std::string &srv_name, int srv_port) override;
-    std::unique_ptr<nfi_xpn_server_comm> connect(const std::string &srv_name, const std::string &port_name) override;
+    std::unique_ptr<nfi_xpn_server_comm> control_connect(std::string_view srv_name, int srv_port) override;
+    std::unique_ptr<nfi_xpn_server_comm> connect(std::string_view srv_name, std::string_view port_name) override;
     void disconnect(std::unique_ptr<nfi_xpn_server_comm> &comm, bool needSendCode = true) override;
 
   private:

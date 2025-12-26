@@ -87,7 +87,6 @@ namespace XPN
             }
         };
     public:
-        // xpn_metadata(std::string &path, xpn_partition& part) : m_path(path), m_part(part) {}
         xpn_metadata(xpn_file& file) : m_file(file) {}
         xpn_metadata(xpn_file& file, const xpn_metadata::data &data) : m_file(file), m_data(data) {}
         // Delete default constructors
@@ -102,8 +101,6 @@ namespace XPN
         xpn_metadata& operator=(xpn_metadata&&) = delete;
     public:
         xpn_file &m_file;
-        // std::string &m_path;
-        // xpn_partition &m_part;
         data m_data;
 
     public:

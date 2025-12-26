@@ -21,21 +21,19 @@
 
 #pragma once
 
-#include <linux/limits.h>
+#include <vector>
 
-#include <cstddef>
-#include <memory_resource>
-#include <string>
+#include "grow_fixed_allocator.hpp"
 
 namespace XPN {
-
 template <typename T, size_t Capacity>
 struct GrowFixedVectorStorage {
-    char m_buffer[sizeof(T) * Capacity];
-    std::pmr::monotonic_buffer_resource m_pool;
+    static constexpr size_t ArenaSize = Capacity * sizeof(T);
+    InternalArena<ArenaSize> m_arena;
+    GrowFixedAllocator<T, Capacity> m_allocator;
 
     // Default contructor
-    GrowFixedVectorStorage() : m_pool(m_buffer, sizeof(m_buffer)) {}
+    GrowFixedVectorStorage() : m_arena(), m_allocator(m_arena) {}
     // Copy contructor
     GrowFixedVectorStorage(const GrowFixedVectorStorage&) : GrowFixedVectorStorage() {}
     // Move contructor
@@ -43,34 +41,36 @@ struct GrowFixedVectorStorage {
 };
 
 template <typename T, size_t Capacity>
-class GrowFixedVector : private GrowFixedVectorStorage<T, Capacity>, public std::pmr::vector<T> {
+class GrowFixedVector : private GrowFixedVectorStorage<T, Capacity>,
+                        public std::vector<T, GrowFixedAllocator<T, Capacity>> {
+    using BaseStorage = GrowFixedVectorStorage<T, Capacity>;
+    using BaseVector = std::vector<T, GrowFixedAllocator<T, Capacity>>;
+
    public:
     // Default contructor
-    GrowFixedVector() : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(&(this->m_pool)) {
-        this->reserve(Capacity);
-    }
+    GrowFixedVector() : BaseStorage(), BaseVector(BaseStorage::m_allocator) { this->reserve(Capacity); }
 
     // Copy contructor
-    GrowFixedVector(const GrowFixedVector& other)
-        : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(other, &(this->m_pool)) {
+    GrowFixedVector(const GrowFixedVector& other) : BaseStorage(), BaseVector(BaseStorage::m_allocator) {
         this->reserve(Capacity);
+        this->assign(other.begin(), other.end());
     }
     // Move constructor
-    GrowFixedVector(GrowFixedVector&& other) noexcept
-        : GrowFixedVectorStorage<T, Capacity>(), std::pmr::vector<T>(std::move(other), &(this->m_pool)) {
+    GrowFixedVector(GrowFixedVector&& other) noexcept : BaseStorage(), BaseVector(BaseStorage::m_allocator) {
         this->reserve(Capacity);
+        this->assign(other.begin(), other.end());
     }
     // Copy assigment
     GrowFixedVector& operator=(const GrowFixedVector& other) {
         if (this != &other) {
-            std::pmr::vector<T>::operator=(other);
+            BaseVector::operator=(other);
         }
         return *this;
     }
     // Move assigment
     GrowFixedVector& operator=(GrowFixedVector&& other) noexcept {
         if (this != &other) {
-            std::pmr::vector<T>::operator=(std::move(other));
+            BaseVector::operator=(std::move(other));
         }
         return *this;
     }

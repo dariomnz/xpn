@@ -44,7 +44,7 @@
 
 namespace XPN {
 
-void profiler_data::dump_data(std::ostream& json, const std::string& process_name) const {
+void profiler_data::dump_data(std::ostream& json, std::string_view process_name) const {
     json << ",{";
     json << "\"cat\":\"function\",";
     json << "\"dur\":" << m_duration << ',';
@@ -60,7 +60,7 @@ void profiler_data::dump_data(std::ostream& json, const std::string& process_nam
     json << "}\n";
 }
 
-void profiler::begin_session(const std::string& name) {
+void profiler::begin_session(std::string_view name) {
     std::lock_guard lock(m_mutex);
     m_current_session = name;
     m_hostname = ns::get_host_name();

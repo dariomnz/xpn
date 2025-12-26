@@ -41,7 +41,7 @@ class args {
         opt_type type = opt_type::flag;
     };
 
-    args(int argc, char* argv[], const std::vector<option>& options, const std::string& extra_help = "")
+    args(int argc, char* argv[], const std::vector<option>& options, std::string_view extra_help = "")
         : m_args(argv, argv + argc), m_options(options), m_extra_help(extra_help) {
         m_options.emplace_back(help_opt);
 

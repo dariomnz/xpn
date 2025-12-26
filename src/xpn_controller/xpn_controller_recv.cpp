@@ -170,7 +170,9 @@ int xpn_controller::recv_mk_config(int socket) {
         }
         while (std::getline(file, line)) {
             if (!line.empty()) {
-                line = xpn_parser::create(server_type + "_server", line, storage_path);
+                std::string protocol = server_type + "_server";
+                xpn_url url{.protocol=protocol, .server=line, .path=storage_path};
+                line = xpn_parser::create(url);
                 part.server_urls.emplace_back(line);
             }
             line.clear();
