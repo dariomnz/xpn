@@ -11,6 +11,7 @@ int main() {
     XPN::xpn_conf::partition part;
     part.server_urls = {"file://localhost/" + tmp_dir + "/xpn"};
     auto cleanup2 = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
-
-    XPN_scope xpn;
+    {
+        XPN_scope xpn;
+    }
 }

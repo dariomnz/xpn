@@ -32,7 +32,7 @@
 
 namespace XPN {
 
-std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_connect ( std::string_view srv_name, int svr_port )
+std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_connect ( std::string_view srv_name, int srv_port )
 {
   XPN_PROFILE_FUNCTION();
   int ret;
@@ -42,28 +42,34 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_fabric_server_control_comm::control_con
   debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] >> Begin");
 
   // Lookup port name
-  ret = socket::client_connect(srv_name, svr_port, xpn_env::get_instance().xpn_connect_timeout_ms, connection_socket);
+  ret = socket::client_connect(srv_name, srv_port,
+                          xpn_env::get_instance().xpn_connect_timeout_ms,
+                          connection_socket,
+                          xpn_env::get_instance().xpn_connect_retry_time_ms);
   if (ret < 0)
   {
     debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: socket connect\n");
     return nullptr;
   }
-  int buffer = socket::xpn_server::ACCEPT_CODE;
-  ret = socket::send(connection_socket, &buffer, sizeof(buffer));
-  if (ret < 0)
   {
-    debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: socket send\n");
+    XPN_PROFILE_SCOPE("send_recv_port");
+    int buffer = socket::xpn_server::ACCEPT_CODE;
+    ret = socket::send(connection_socket, &buffer, sizeof(buffer));
+    if (ret < 0)
+    {
+      debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: socket send\n");
+      socket::close(connection_socket);
+      return nullptr;
+    }
+    ret = socket::recv(connection_socket, port_name, MAX_PORT_NAME);
+    if (ret < 0)
+    {
+      debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: socket read\n");
+      socket::close(connection_socket);
+      return nullptr;
+    }
     socket::close(connection_socket);
-    return nullptr;
   }
-  ret = socket::recv(connection_socket, port_name, MAX_PORT_NAME);
-  if (ret < 0)
-  {
-    debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: socket read\n");
-    socket::close(connection_socket);
-    return nullptr;
-  }
-  socket::close(connection_socket);
 
   if (ret < 0) {
     printf("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_connect] ERROR: Lookup %.*s Port %s\n",static_cast<int>(srv_name.size()), srv_name.data(), port_name);

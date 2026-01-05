@@ -83,7 +83,7 @@ int xpn_controller::run() {
 
     int connection_socket = -1;
     int op_code = 0;
-    bool running = true;
+    std::atomic<bool> running = true;
     std::mutex command_code_mutex;
     std::mutex action_code_mutex;
     std::mutex profiler_code_mutex;
@@ -112,7 +112,7 @@ int xpn_controller::run() {
             case socket::xpn_controller::COMMAND_CODE:
                 worker->launch_no_future([&, connection_socket]() {
                     std::unique_lock lock(command_code_mutex);
-                    ret = recv_command(connection_socket);
+                    recv_command(connection_socket);
                     socket::close(connection_socket);
                 });
                 break;
@@ -121,7 +121,7 @@ int xpn_controller::run() {
                 worker->launch_no_future([&, connection_socket]() {
                     std::unique_lock lock(action_code_mutex);
                     action act;
-                    ret = recv_action(connection_socket, act);
+                    recv_action(connection_socket, act);
                     if (act == action::STOP) {
                         running = false;
                     }
@@ -132,7 +132,7 @@ int xpn_controller::run() {
             case socket::xpn_controller::PROFILER_CODE:
                 worker->launch_no_future([&, connection_socket]() {
                     std::unique_lock lock(profiler_code_mutex);
-                    ret = recv_profiler(connection_socket);
+                    recv_profiler(connection_socket);
                     socket::close(connection_socket);
                 });
                 break;
@@ -375,7 +375,15 @@ int xpn_controller::stop_servers(bool await) {
     int res = 0;
     debug_info("[XPN_CONTROLLER] >> Start");
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    FixedTaskQueue<WorkerResult> tasks;
+    
+    auto result_handler = [&](const WorkerResult& r) {
+        if (r.result < 0) {
+            res = r.result;
+            errno = r.errorno;
+        }
+        return true; // Continue
+    };
+    FixedTaskQueue tasks(*worker, result_handler);
 #ifdef DEBUG
     for (auto& srv : m_servers) {
         debug_info("Server to stop: " << srv);
@@ -383,15 +391,7 @@ int xpn_controller::stop_servers(bool await) {
 #endif
 
     for (auto& name : m_servers) {
-        if (tasks.full()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
-        auto &task = tasks.get_next_slot();
-        worker->launch([&name, await]() {
+        tasks.launch([&name, await]() {
             debug_info("Stopping server (" << name << ")");
             int socket;
             int ret;
@@ -423,16 +423,10 @@ int xpn_controller::stop_servers(bool await) {
                 socket::close(socket);
             }
             return WorkerResult(ret);
-        }, task);
+        });
     }
 
-    while (!tasks.empty()) {
-        auto aux_res = tasks.consume_one();
-        if (aux_res.result < 0) {
-            res = aux_res.result;
-            errno = aux_res.errorno;
-        }
-    }
+    tasks.wait_remaining();
 
     m_servers.clear();
 
@@ -450,17 +444,16 @@ int xpn_controller::ping_servers() {
     debug_info("[XPN_CONTROLLER] >> Start");
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
 
-    FixedTaskQueue<WorkerResult> tasks;
-    for (auto& name : m_servers) {
-        if (tasks.full()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
+    auto result_handler = [&](const WorkerResult& r) {
+        if (r.result < 0) {
+            res = r.result;
+            errno = r.errorno;
         }
-        auto &task = tasks.get_next_slot();
-        worker->launch([&name]() {
+        return true; // Continue
+    };
+    FixedTaskQueue tasks(*worker, result_handler);
+    for (auto& name : m_servers) {
+        tasks.launch([&name]() {
             debug_info("Ping server (" << name << ")");
             int socket;
             int ret = -1;
@@ -487,16 +480,10 @@ int xpn_controller::ping_servers() {
             }
             socket::close(socket);
             return WorkerResult(ret);
-        }, task);
+        });
     }
 
-    while (!tasks.empty()) {
-        auto aux_res = tasks.consume_one();
-        if (aux_res.result < 0) {
-            res = aux_res.result;
-            errno = aux_res.errorno;
-        }
-    }
+    tasks.wait_remaining();
 
     debug_info("[XPN_CONTROLLER] >> End");
     return res;

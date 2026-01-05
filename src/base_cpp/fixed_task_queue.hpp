@@ -21,26 +21,44 @@
 
 #pragma once
 
-#include <array>
-#include <condition_variable>
-#include <mutex>
-#include <optional>
-
+#include "base_cpp/workers.hpp"
 #include "task_result.hpp"
 
 namespace XPN {
 
-template <typename T, size_t Capacity = 64>
+// Helpers to instanciate template types
+namespace internal {
+
+template <typename T>
+struct arg_extractor : arg_extractor<decltype(&T::operator())> {};
+
+// Lambdas with const
+template <typename C, typename R, typename Arg>
+struct arg_extractor<R (C::*)(Arg) const> {
+    using type = std::decay_t<Arg>;
+};
+
+// Mutable lambdas
+template <typename C, typename R, typename Arg>
+struct arg_extractor<R (C::*)(Arg)> {
+    using type = std::decay_t<Arg>;
+};
+}  // namespace internal
+
+template <typename T, typename Handler, size_t Capacity = 64>
 class FixedTaskQueue {
    private:
-    TaskResult<T> m_storage[Capacity];
+    TaskResult<T> m_storage[Capacity];  // Ring buffer
 
-    size_t m_head = 0;  // Where we produce
-    size_t m_tail = 0;  // Where we consume
-    size_t m_count = 0;
+    size_t m_head = 0;                  // Where we produce
+    size_t m_tail = 0;                  // Where we consume
+    size_t m_count = 0;                 // The current count of elements
+
+    workers& m_worker;                  // Worker where the task is run
+    Handler m_on_result;                // Function to call when a result is consumed
 
    public:
-    FixedTaskQueue() = default;
+    FixedTaskQueue(workers& worker, Handler on_result) : m_worker(worker), m_on_result(std::move(on_result)) {}
     ~FixedTaskQueue() {
         // If the queue is destroyed, we MUST wait for all pending tasks.
         // Otherwise, worker threads will write to a destroyed TaskResult.
@@ -57,6 +75,32 @@ class FixedTaskQueue {
     // Delete move assignment operator
     FixedTaskQueue& operator=(FixedTaskQueue&&) = delete;
 
+    // Attempts to launch a task. Automatically manages backpressure when the queue is full.
+    // Returns false if an error was detected in a previous task and the loop must stop.
+    template <typename Func>
+    bool launch(Func&& task_func) {
+        // 1. If the queue is full, consume one result to make room
+        if (full()) {
+            auto res = consume_one();
+            if (!m_on_result(res)) return false;  // Error encountered, signal to break the loop
+        }
+
+        // 2. Launch the new task
+        auto& slot = get_next_slot();
+        m_worker.launch(std::forward<Func>(task_func), slot);
+        return true;
+    }
+
+    // Waits for all remaining tasks in the queue to complete
+    bool wait_remaining() {
+        while (!empty()) {
+            auto res = consume_one();
+            if (!m_on_result(res)) return false;
+        }
+        return true;
+    }
+
+   private:
     // This is called when you want to launch a task
     TaskResult<T>& get_next_slot() {
         if (full()) {
@@ -94,4 +138,7 @@ class FixedTaskQueue {
 
     size_t count() const { return m_count; }
 };
+
+template <typename Handler>
+FixedTaskQueue(workers&, Handler) -> FixedTaskQueue<typename internal::arg_extractor<Handler>::type, Handler>;
 }  // namespace XPN

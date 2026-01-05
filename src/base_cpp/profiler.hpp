@@ -29,6 +29,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include "base_cpp/task_result.hpp"
 
 namespace XPN {
 
@@ -52,6 +53,7 @@ class profiler {
     profiler(profiler&&) = delete;
 
     void begin_session(std::string_view name);
+    void end_session();
 
     void write_profile(std::variant<const char*, std::string> name, uint32_t start, uint32_t duration);
 
@@ -72,9 +74,10 @@ class profiler {
 
    private:
     std::mutex m_mutex;
+    std::mutex m_mutex_fut_save_data;
     std::string m_current_session = "";
     std::string m_hostname = "";
-    std::list<std::future<int>> m_fut_save_data;
+    std::list<TaskResult<int>> m_fut_save_data;
     constexpr static uint64_t m_buffer_cap = 1024;
     std::vector<profiler_data> m_buffer;
 };
@@ -131,10 +134,10 @@ class profiler_timer {
 };
 }  // namespace XPN
 
-#define XPN_PROFILE 0
+#define XPN_PROFILE 1
 #if XPN_PROFILE
 #define XPN_PROFILE_BEGIN_SESSION(name) ::XPN::profiler::get_instance().begin_session(name)
-#define XPN_PROFILE_END_SESSION()
+#define XPN_PROFILE_END_SESSION() ::XPN::profiler::get_instance().end_session()
 #define XPN_PROFILE_SCOPE_LINE2(name, line)     ::XPN::profiler_timer timer##line(name)
 #define XPN_PROFILE_SCOPE_LINE(name, line)      XPN_PROFILE_SCOPE_LINE2(name, line)
 #define XPN_PROFILE_SCOPE(name)                 XPN_PROFILE_SCOPE_LINE(name, __LINE__)

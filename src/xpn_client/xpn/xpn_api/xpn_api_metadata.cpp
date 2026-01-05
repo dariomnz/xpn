@@ -52,34 +52,26 @@ namespace XPN
 
         int server = xpn_path::hash(mdata.m_file.m_path, mdata.m_file.m_part.m_data_serv.size(), true);
 
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                res = r.result;
+                errno = r.errorno;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         for (int i = 0; i < mdata.m_file.m_part.m_replication_level+1; i++)
         {
             server = (server+i) % mdata.m_file.m_part.m_data_serv.size();
             if (mdata.m_file.m_part.m_data_serv[server]->m_error != -1){
                 XPN_DEBUG("Write metadata to serv "<<server); 
-                if (tasks.full()) {
-                    auto aux_res = tasks.consume_one();
-                    if (aux_res.result < 0) {
-                        res = aux_res.result;
-                        errno = aux_res.errorno;
-                    }
-                }
-                auto &task = tasks.get_next_slot();
-                m_worker->launch([server, &mdata, only_file_size](){
+                tasks.launch([server, &mdata, only_file_size](){
                     int res = mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_data, only_file_size);
                     return WorkerResult(res);
-                }, task);
+                });
             }
         }
-
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
+        tasks.wait_remaining();
 
         XPN_DEBUG_END_CUSTOM(mdata.m_file.m_path<<", "<<only_file_size);
         return res;

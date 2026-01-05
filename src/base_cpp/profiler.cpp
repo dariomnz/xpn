@@ -21,25 +21,7 @@
 
 #include "profiler.hpp"
 
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
-
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <mutex>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <thread>
-
-#include "filesystem.hpp"
 #include "ns.hpp"
-#include "socket.hpp"
 #include "xpn_controller/xpn_controller.hpp"
 
 namespace XPN {
@@ -61,64 +43,88 @@ void profiler_data::dump_data(std::ostream& json, std::string_view process_name)
 }
 
 void profiler::begin_session(std::string_view name) {
-    std::lock_guard lock(m_mutex);
+    debug_info("begin profiler session " << name);
+    std::unique_lock lock(m_mutex);
     m_current_session = name;
     m_hostname = ns::get_host_name();
+    m_buffer.reserve(m_buffer_cap);
+}
+
+void profiler::end_session() {
+    debug_info("end profiler session " << m_current_session);
+    {
+        std::unique_lock lock(m_mutex);
+        if (m_buffer.size() > 0) {
+            save_data(std::move(m_buffer));
+            m_buffer.clear();
+        }
+        m_current_session.clear();
+    }
+    {
+        std::unique_lock lock(m_mutex_fut_save_data);
+        for (auto& fut : m_fut_save_data) {
+            if (fut.valid()) {
+                fut.get();
+            }
+        }
+    }
 }
 
 void profiler::write_profile(std::variant<const char*, std::string> name, uint32_t start, uint32_t duration) {
-    std::lock_guard lock(m_mutex);
+    std::unique_lock lock(m_mutex);
     if (!m_current_session.empty()) {
-        debug_info("Buffer size " << m_buffer.size());
+#ifdef DEBUG
+        if (std::holds_alternative<const char*>(name)) {
+            debug_info("Write profile: '" << std::get<const char*>(name) << "' Buffer size " << m_buffer.size());
+        } else {
+            debug_info("Write profile: '" << std::get<std::string>(name) << "' Buffer size " << m_buffer.size());
+        }
+#endif
         m_buffer.emplace_back(getpid(), std::this_thread::get_id(), name, start, duration);
 
         if (m_buffer.size() >= m_buffer_cap) {
             save_data(std::move(m_buffer));
-            m_buffer = std::vector<profiler_data>();
+            m_buffer.clear();
             m_buffer.reserve(m_buffer_cap);
         }
     }
 }
 
 profiler::profiler() {
-    std::lock_guard lock(m_mutex);
-    m_buffer = std::vector<profiler_data>();
+    std::unique_lock lock(m_mutex);
+    m_buffer.clear();
     m_buffer.reserve(m_buffer_cap);
 }
 
-profiler::~profiler() {
-    std::lock_guard lock(m_mutex);
-    if (m_buffer.size() > 0) {
-        save_data(std::move(m_buffer));
-    }
-    for (auto& fut : m_fut_save_data) {
-        if (fut.valid()) {
-            fut.get();
-        }
-    }
-}
+profiler::~profiler() { end_session(); }
 
 std::string profiler::get_header() { return "{\"otherData\": {},\"traceEvents\":[{}\n"; }
 
 std::string profiler::get_footer() { return "]}"; }
 
 void profiler::save_data(const std::vector<profiler_data>&& message) {
-    m_fut_save_data.remove_if([](auto& fut) {
-        if (fut.valid() && fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            fut.get();
-            return true;
-        }
-        return false;
-    });
+    TaskResult<int>* task;
+    {
+        std::unique_lock lock(m_mutex_fut_save_data);
+        m_fut_save_data.remove_if([](auto& fut) {
+            if (fut.ready()) {
+                fut.get();
+                return true;
+            }
+            return false;
+        });
+        task = &m_fut_save_data.emplace_back();
+        task->init();
+    }
     auto current_session = m_current_session + "_" + m_hostname;
-    m_fut_save_data.push_back(std::async(std::launch::async, [msg = std::move(message), current_session]() {
+    std::thread([msg = std::move(message), current_session, task]() {
         std::stringstream ss;
         for (auto& data : msg) {
             data.dump_data(ss, current_session);
         }
         std::string str = ss.str();
         debug_info("profiler send msgs " << msg.size() << " and " << str.size() << " str size");
-        return xpn_controller::send_profiler(str);
-    }));
+        task->set_value(xpn_controller::send_profiler(str));
+    }).detach();
 }
 }  // namespace XPN

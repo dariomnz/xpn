@@ -22,8 +22,6 @@
 #pragma once
 
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
 
 namespace XPN {
 
@@ -64,7 +62,9 @@ struct TaskResult {
         state.notify_all();
     }
 
-    bool is_valid() { return state.load() != UNINITIALIZED; }
+    bool valid() { return state.load() != UNINITIALIZED; }
+
+    bool ready() { return state.load() == READY; }
 
     T get() {
         if (state.load() == WAITING) {

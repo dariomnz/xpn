@@ -75,7 +75,17 @@ namespace XPN
         rw_op.server_status = xpn_rw_operation::SUCCESS;
         
         uint64_t sum = 0;
-        FixedTaskQueue<WorkerResult> tasks;
+
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0){
+                res = r.result;
+                errno = r.errorno;
+                return false; // Stop
+            }
+            sum += r.result;
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         while(rw_op.server_status != xpn_rw_operation::END) {
             rw_op = rw_calculator.next_read();
             XPN_DEBUG(rw_op);
@@ -87,18 +97,7 @@ namespace XPN
             if (res < 0){
                 break;
             }
-            if (tasks.full()) {
-                auto aux_res = tasks.consume_one();
-                if (aux_res.result < 0){
-                    res = aux_res.result;
-                    errno = aux_res.errorno;
-                    XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
-                    return res;
-                }
-                sum += aux_res.result;
-            }
-            auto &task = tasks.get_next_slot();
-            m_worker->launch([&file, rw_op]() {
+            bool ok = tasks.launch([&file, rw_op]() {
                 XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
                                   << " size: " << rw_op.buffer_size);
                 auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_read(
@@ -106,18 +105,17 @@ namespace XPN
                     rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
                 XPN_DEBUG("nfi_read " << ret);
                 return WorkerResult(ret);
-            }, task);
-        }
+            });
 
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0){
-                res = aux_res.result;
-                errno = aux_res.errorno;
+            if (!ok) {
                 XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
                 return res;
             }
-            sum += aux_res.result;
+        }
+
+        if (!tasks.wait_remaining()) {
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
+            return res;
         }
 
         res = sum;
@@ -200,7 +198,16 @@ namespace XPN
         rw_op.server_status = xpn_rw_operation::SUCCESS;
         
         uint64_t sum = 0;
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0){
+                res = r.result;
+                errno = r.errorno;
+                return false; // Stop
+            }
+            sum += r.result;
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         while(rw_op.server_status != xpn_rw_operation::END) {
             rw_op = rw_calculator.next_write();
             XPN_DEBUG(rw_op);
@@ -214,18 +221,8 @@ namespace XPN
             }
 
             intended_size += rw_op.buffer_size;
-            if (tasks.full()) {
-                auto aux_res = tasks.consume_one();
-                if (aux_res.result < 0){
-                    res = aux_res.result;
-                    errno = aux_res.errorno;
-                    XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
-                    return res;
-                }
-                sum += aux_res.result;
-            }
-            auto &task = tasks.get_next_slot();
-            m_worker->launch([&file, rw_op]() {
+
+            bool ok = tasks.launch([&file, rw_op]() {
                 XPN_DEBUG("Serv " << rw_op.server_status << " off: " << rw_op.srv_offset + xpn_metadata::HEADER_SIZE
                                   << " size: " << rw_op.buffer_size);
                 auto ret = file.m_part.m_data_serv[rw_op.server_status]->nfi_write(
@@ -233,18 +230,17 @@ namespace XPN
                     rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
                 XPN_DEBUG("nfi_write " << ret);
                 return WorkerResult(ret);
-            }, task);
-        }
+            });
 
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0){
-                res = aux_res.result;
-                errno = aux_res.errorno;
+            if (!ok) {
                 XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
                 return res;
             }
-            sum += aux_res.result;
+        }
+
+        if (!tasks.wait_remaining()) {
+            XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size);
+            return res;
         }
 
         if (sum != intended_size){

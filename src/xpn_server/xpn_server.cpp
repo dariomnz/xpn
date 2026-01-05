@@ -21,6 +21,7 @@
 
 #include <unistd.h>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <string>
 #include <thread>
@@ -301,6 +302,8 @@ void xpn_server::finish ( void )
 
 xpn_server::xpn_server(int argc, char *argv[]) : m_params(argc, argv)
 {
+    XPN_PROFILE_BEGIN_SESSION("xpn_server");
+    XPN_PROFILE_FUNCTION();
     if (xpn_env::get_instance().xpn_stats){
         m_window_stats = std::make_unique<xpn_window_stats>(m_stats);
     }
@@ -315,6 +318,12 @@ xpn_server::xpn_server(int argc, char *argv[]) : m_params(argc, argv)
 
 xpn_server::~xpn_server()
 {
+    XPN_PROFILE_END_SESSION();
+}
+
+void signalHandler([[maybe_unused]] int signum) {
+    // To permit running the destructors of the singletons
+    exit(EXIT_SUCCESS);
 }
 
 // Start servers
@@ -326,7 +335,8 @@ int xpn_server::run()
     int recv_code = 0;
     timer timer;
 
-    XPN_PROFILE_BEGIN_SESSION("xpn_server");
+    std::signal(SIGINT, signalHandler);
+
     XPN_PROFILE_FUNCTION();
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] >> Begin");
@@ -487,18 +497,17 @@ int xpn_server::stop()
     
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
 
-    FixedTaskQueue<WorkerResult> tasks;
+    auto result_handler = [&](const WorkerResult& r) {
+        if (r.result < 0) {
+            res = r.result;
+            errno = r.errorno;
+        }
+        return true; // Continue
+    };
+    FixedTaskQueue tasks(*worker, result_handler);
     for (auto &name : srv_names)
     {
-        if (tasks.full()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
-        auto &task = tasks.get_next_slot();
-        worker->launch([this, &name] (){
+        tasks.launch([this, &name] (){
 
             printf(" * Stopping server (%s)\n", name.c_str());
             int socket;
@@ -541,16 +550,10 @@ int xpn_server::stop()
                 socket::close(socket);
             }
             return WorkerResult(ret);
-        }, task);
+        });
     }
 
-    while (!tasks.empty()) {
-        auto aux_res = tasks.consume_one();
-        if (aux_res.result < 0) {
-            res = aux_res.result;
-            errno = aux_res.errorno;
-        }
-    }
+    tasks.wait_remaining();
     
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] >> End");
 

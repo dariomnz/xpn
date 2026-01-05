@@ -329,6 +329,7 @@ namespace XPN
 
     int socket::client_connect ( std::string_view srv_name, int port, int &out_socket )
     {
+        XPN_PROFILE_FUNCTION();
         int client_fd;
         struct sockaddr_storage serv_addr;
         FixedString<HOST_NAME_MAX> name(srv_name);
@@ -361,6 +362,7 @@ namespace XPN
 
     int socket::client_connect ( std::string_view srv_name, int port, int timeout_ms, int &out_socket, int time_to_sleep_ms )
     {
+        XPN_PROFILE_FUNCTION();
         int ret = -1;
         auto start = std::chrono::high_resolution_clock::now();
         while (ret < 0) {

@@ -36,6 +36,7 @@ namespace XPN {
 
 std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connect ( std::string_view srv_name, int srv_port )
 {
+  XPN_PROFILE_FUNCTION();
   int ret;
   int connection_socket;
   char port_name[MAX_PORT_NAME];
@@ -53,23 +54,26 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connec
     debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: socket connect\n");
     return nullptr;
   }
-  int buffer = socket::xpn_server::ACCEPT_CODE;
-  ret = socket::send(connection_socket, &buffer, sizeof(buffer));
-  if (ret < 0)
   {
-    debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: socket send\n");
+    XPN_PROFILE_SCOPE("send_recv_port");
+    int buffer = socket::xpn_server::ACCEPT_CODE;
+    ret = socket::send(connection_socket, &buffer, sizeof(buffer));
+    if (ret < 0)
+    {
+      debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: socket send\n");
+      socket::close(connection_socket);
+      return nullptr;
+    }
+    ret = socket::recv(connection_socket, port_name, MAX_PORT_NAME);
+    if (ret < 0)
+    {
+      debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: socket read\n");
+      socket::close(connection_socket);
+      return nullptr;
+    }
     socket::close(connection_socket);
-    return nullptr;
   }
-  ret = socket::recv(connection_socket, port_name, MAX_PORT_NAME);
-  if (ret < 0)
-  {
-    debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: socket read\n");
-    socket::close(connection_socket);
-    return nullptr;
-  }
-  socket::close(connection_socket);
-
+  
   if (ret < 0) {
     printf("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] ERROR: Lookup %.*s Port %s\n", static_cast<int>(srv_name.size()), srv_name.data(), port_name);
     return nullptr;
@@ -82,6 +86,7 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::control_connec
 }
 
 std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::connect(std::string_view srv_name, std::string_view port_name) {
+  XPN_PROFILE_FUNCTION();
   int ret, sd;
   // Connect...
   debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_connect] Connect port "<<port_name);
@@ -112,6 +117,7 @@ std::unique_ptr<nfi_xpn_server_comm> nfi_sck_server_control_comm::connect(std::s
 
 void nfi_sck_server_control_comm::disconnect(std::unique_ptr<nfi_xpn_server_comm> &comm, bool needSendCode) 
 {
+  XPN_PROFILE_FUNCTION();
   int ret;
   nfi_sck_server_comm *in_comm = static_cast<nfi_sck_server_comm*>(comm.get());
 
@@ -148,6 +154,7 @@ void nfi_sck_server_control_comm::disconnect(std::unique_ptr<nfi_xpn_server_comm
 }
 
 int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
+    XPN_PROFILE_FUNCTION();
     int ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] >> Begin");
@@ -171,6 +178,7 @@ int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
 }
 
 int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size) {
+    XPN_PROFILE_FUNCTION();
     int ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] >> Begin");
@@ -200,6 +208,7 @@ int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size) {
 }
 
 int64_t nfi_sck_server_comm::read_data(void *data, int64_t size) {
+    XPN_PROFILE_FUNCTION();
     int ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] >> Begin");

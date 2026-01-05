@@ -19,6 +19,7 @@ void run_test(int thread = 0) {
     std::string original_data = setup::generate_random_string(total_bytes);
     std::cout << "Generated data of " << data_size_mb << " MB." << std::endl;
 
+    LogTimer open_write_close_timer("open write close");
     int file_w = xpn_open(filename.c_str(), O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
     if (file_w < 0) {
         perror("Error opening file for writing");
@@ -26,20 +27,24 @@ void run_test(int thread = 0) {
     }
     size_t written_bytes = xpn_write(file_w, original_data.data(), sizeof(char) * original_data.size());
     xpn_close(file_w);
+    open_write_close_timer.stop();
 
     if (written_bytes != original_data.size()) {
         std::cerr << "Error writing data to file: " << filename << std::endl;
         exit(EXIT_FAILURE);
     }
     std::cout << "Successfully wrote " << written_bytes << " bytes to " << filename << std::endl;
-    
+
+    LogTimer rename_timer("rename");
     int rename_result = xpn_rename(filename.c_str(), filename_rename.c_str());
     if (rename_result < 0) {
         std::cerr << "Error renaming the file: " << filename << " to " << filename_rename << std::endl;
         exit(EXIT_FAILURE);
     }
     std::cout << "Successfully renaming file " << filename << " to " << filename_rename << std::endl;
+    rename_timer.stop();
 
+    LogTimer open_read_close_timer("open write close");
     int file_r = xpn_open(filename_rename.c_str(), O_RDONLY);
     if (file_r < 0) {
         perror("Error opening file for reading");
@@ -47,13 +52,13 @@ void run_test(int thread = 0) {
     }
 
     long file_size = xpn_lseek(file_r, 0, SEEK_END);
-    ;
     xpn_lseek(file_r, 0, SEEK_SET);
 
     std::string read_data;
     read_data.resize(file_size);
     size_t read_bytes = xpn_read(file_r, read_data.data(), sizeof(char) * file_size);
     xpn_close(file_r);
+    open_read_close_timer.stop();
 
     if (read_bytes != (size_t)file_size) {
         std::cerr << "Error reading data from file: " << filename << std::endl;
@@ -69,6 +74,7 @@ void run_test(int thread = 0) {
         exit(EXIT_FAILURE);
     }
 
+    LogTimer unlink_timer("unlink");
     int ret = xpn_unlink(filename_rename.c_str());
     if (ret < 0) {
         std::cerr << "Error removing file: " << filename_rename << std::endl;
@@ -84,6 +90,7 @@ int main() {
     auto cleanup_data_dir3 = setup::create_empty_dir(tmp_dir + "/xpn3");
     XPN::xpn_conf::partition part;
     {
+        LogTimer timer("3 file server 1k bsize");
         part.server_urls = {
             "file://localhost/" + tmp_dir + "/xpn1",
             "file://localhost/" + tmp_dir + "/xpn2",
@@ -95,6 +102,7 @@ int main() {
         run_test();
     }
     {
+        LogTimer timer("2 file server 1m bsize");
         part.server_urls = {
             "file://localhost/" + tmp_dir + "/xpn1",
             "file://localhost/" + tmp_dir + "/xpn2",

@@ -85,32 +85,25 @@ namespace XPN
         auto file = m_file_table.get(dirp->fd);
         XPN_DEBUG("Close : '"<<file->m_path<<"'");
 
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                res = r.result;
+                errno = r.errorno;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         for (uint64_t i = 0; i < file->m_data_vfh.size(); i++)
         {
             if (file->m_data_vfh[i].is_initialized()){
-                if (tasks.full()) {
-                    auto aux_res = tasks.consume_one();
-                    if (aux_res.result < 0) {
-                        res = aux_res.result;
-                        errno = aux_res.errorno;
-                    }
-                }
-                auto &task = tasks.get_next_slot();
-                m_worker->launch([i, &file](){
+                tasks.launch([i, &file](){
                     int res = file->m_part.m_data_serv[i]->nfi_closedir(file->m_path, file->m_data_vfh[i]);
                     return WorkerResult(res);
-                }, task);
+                });
             }
         }
-        
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
+
+        tasks.wait_remaining();
 
         m_file_table.remove(dirp->fd);
 
@@ -180,31 +173,23 @@ namespace XPN
 
         xpn_file file(file_path, m_partitions.find(part_name)->second);
 
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                res = r.result;
+                errno = r.errorno;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
-            if (tasks.full()) {
-                auto aux_res = tasks.consume_one();
-                if (aux_res.result < 0) {
-                    res = aux_res.result;
-                    errno = aux_res.errorno;
-                }
-            }
-            auto &task = tasks.get_next_slot();
             auto& serv = file.m_part.m_data_serv[i];
-            m_worker->launch([&serv, &file, perm](){
+            tasks.launch([&serv, &file, perm](){
                 int res = serv->nfi_mkdir(file.m_path, perm);
                 return WorkerResult(res);
-            }, task);
+            });
         }
-
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
+        tasks.wait_remaining();
 
         XPN_DEBUG_END_CUSTOM(path<<", "<<perm);
         return res;
@@ -234,33 +219,26 @@ namespace XPN
 
         xpn_file file(file_path, m_partitions.find(part_name)->second);
 
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                res = r.result;
+                errno = r.errorno;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
-            if (tasks.full()) {
-                auto aux_res = tasks.consume_one();
-                if (aux_res.result < 0) {
-                    res = aux_res.result;
-                    errno = aux_res.errorno;
-                }
-            }
-            auto &task = tasks.get_next_slot();
             auto& serv = file.m_part.m_data_serv[i];
-            m_worker->launch([&serv, &file](){
+            tasks.launch([&serv, &file](){
                 // Always wait and not async because it can fail in other ways
                 int res = serv->nfi_rmdir(file.m_path, false);
                 return WorkerResult(res);
                 // v_res[i] = serv->nfi_rmdir(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
-            }, task);
+            });
         }
-        
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
+
+        tasks.wait_remaining();
 
         XPN_DEBUG_END_CUSTOM(path);
         return res;

@@ -150,20 +150,20 @@ namespace XPN
             return res;
         }
 
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                res = r.result;
+                errno = r.errorno;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*m_worker, result_handler);
         std::mutex buff_mutex;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             if (static_cast<int>(i) == file.m_mdata.master_file()) continue;
-            if (tasks.full()) {
-                auto aux_res = tasks.consume_one();
-                if (aux_res.result < 0) {
-                    res = aux_res.result;
-                    errno = aux_res.errorno;
-                }
-            }
-            auto &task = tasks.get_next_slot();
-            m_worker->launch([i, &file, &buf, &buff_mutex](){
+            if (file.m_part.m_data_serv[i]->m_error == -1) continue;
+            tasks.launch([i, &file, &buf, &buff_mutex](){
                 struct ::statvfs aux_buf;
                 int res = file.m_part.m_data_serv[i]->nfi_statvfs(file.m_path, aux_buf);
                 std::unique_lock lock(buff_mutex);
@@ -177,16 +177,10 @@ namespace XPN
                     buf->f_favail += aux_buf.f_favail;
                 }
                 return WorkerResult(res);
-            }, task);
+            });
         }
 
-        while (!tasks.empty()) {
-            auto aux_res = tasks.consume_one();
-            if (aux_res.result < 0) {
-                res = aux_res.result;
-                errno = aux_res.errorno;
-            }
-        }
+        tasks.wait_remaining();
 
         XPN_DEBUG_END_CUSTOM(file.m_path);
         return res;

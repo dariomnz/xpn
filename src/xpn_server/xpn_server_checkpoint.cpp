@@ -182,7 +182,13 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
         int64_t current_offset = 0;
 
         err = 0;
-        FixedTaskQueue<WorkerResult> tasks;
+        auto result_handler = [&](const WorkerResult& r) {
+            if (r.result < 0) {
+                err -= 1;
+            }
+            return true; // Continue
+        };
+        FixedTaskQueue tasks(*worker, result_handler);
         for (int i = 0; i < effective_threads; ++i) {
             int64_t bytes_to_copy;
 
@@ -193,27 +199,15 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
             }
 
             if (bytes_to_copy > 0) {
-                if (tasks.full()) {
-                    auto ret = tasks.consume_one();
-                    if (ret.result < 0) {
-                        err -= 1;
-                    }
-                }
-                auto &task = tasks.get_next_slot();
-                worker->launch([&fs, from_fd, to_fd, current_offset, bytes_to_copy]() {
+                tasks.launch([&fs, from_fd, to_fd, current_offset, bytes_to_copy]() {
                     int res = checkpoint_file_chunk_task(fs, from_fd, to_fd, current_offset, bytes_to_copy);
                     return WorkerResult(res);
-                }, task);
+                });
                 current_offset += bytes_to_copy;
             }
         }
 
-        while (!tasks.empty()) {
-            auto ret = tasks.consume_one();
-            if (ret.result < 0) {
-                err -= 1;
-            }
-        }
+        tasks.wait_remaining();
     }
 
     fs->close(from_fd);

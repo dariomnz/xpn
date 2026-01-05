@@ -157,7 +157,8 @@ class setup {
 
         return Defer([processes = std::move(server_processes)]() mutable {
             for (auto&& srv_p : processes) {
-                srv_p.kill(SIGKILL);
+                debug_info("Defer kill server is_running" << (srv_p.is_running() ? " true" : " false"));
+                srv_p.kill(SIGINT);
                 srv_p.wait_status();
             }
         });
@@ -179,15 +180,59 @@ class setup {
     }
 };
 
+template <typename unit = std::chrono::milliseconds>
+class LogTimer {
+   public:
+    explicit LogTimer(std::string_view name)
+        : m_name(name), m_startTimepoint(std::chrono::high_resolution_clock::now()) {}
+
+    ~LogTimer() { stop(); }
+
+    void stop() {
+        if (m_stopped) return;
+
+        auto now = std::chrono::high_resolution_clock::now();
+        using double_duration = std::chrono::duration<double, typename unit::period>;
+        auto elapsed = std::chrono::duration_cast<double_duration>(now - m_startTimepoint).count();
+
+        std::string_view unit_name = get_unit_name();
+
+        std::cout << "[Timer] " << m_name << ": " << std::fixed << std::setprecision(3) << elapsed << " " << unit_name
+                  << "\n";
+
+        m_stopped = true;
+    }
+
+   private:
+    constexpr std::string_view get_unit_name() const {
+        if constexpr (std::is_same_v<unit, std::chrono::nanoseconds>)
+            return "ns";
+        else if constexpr (std::is_same_v<unit, std::chrono::microseconds>)
+            return "us";
+        else if constexpr (std::is_same_v<unit, std::chrono::milliseconds>)
+            return "ms";
+        else if constexpr (std::is_same_v<unit, std::chrono::seconds>)
+            return "s";
+        else
+            return " units";
+    }
+
+    std::string m_name;
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_startTimepoint;
+    bool m_stopped = false;
+};
+
 class XPN_scope {
    public:
     XPN_scope() {
+        LogTimer xpn_init_timer("xpn_init");
         if (xpn_init() < 0) {
             std::cerr << "Error: xpn_init" << std::endl;
             exit(EXIT_FAILURE);
         }
     }
     ~XPN_scope() {
+        LogTimer xpn_destroy_timer("xpn_destroy");
         if (xpn_destroy() < 0) {
             std::cerr << "Error: xpn_destroy" << std::endl;
             exit(EXIT_FAILURE);
