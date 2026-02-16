@@ -30,13 +30,38 @@
 
 namespace XPN {
 struct FixedBuffer : std::streambuf {
-    FixedBuffer(char* buf, size_t size) { setp(buf, buf + size - 1); }
+    FILE* m_file;
 
-    size_t size() const { return pptr() - pbase(); }
+    FixedBuffer(char* buf, size_t size, FILE* file) : m_file(file) { setp(buf, buf + size); }
 
-    const char* c_str() {
-        *pptr() = '\0';
-        return pbase();
+    ~FixedBuffer() override { sync(); }
+
+    int_type overflow(int_type c) override {
+        if (m_file) {
+            flush_to_file();
+            if (!traits_type::eq_int_type(c, traits_type::eof())) {
+                sputc(traits_type::to_char_type(c));
+            }
+            return c;
+        }
+        return traits_type::eof();
+    }
+
+    int sync() override {
+        if (m_file) {
+            flush_to_file();
+        }
+        return 0;
+    }
+
+    void flush_to_file() {
+        if (!m_file) return;
+        std::ptrdiff_t n = pptr() - pbase();
+        if (n > 0) {
+            fprintf(m_file, "%.*s", static_cast<int>(n), pbase());
+            fflush(m_file);
+            setp(pbase(), epptr());  // Reset pointers
+        }
     }
 };
 
@@ -45,19 +70,29 @@ struct FixedOStreamStorage {
     char m_buffer[Capacity];
     FixedBuffer m_storage;
 
-    FixedOStreamStorage() : m_storage(m_buffer, Capacity) {}
+    FixedOStreamStorage(FILE* file) : m_storage(m_buffer, Capacity, file) {}
 };
 
 template <size_t Capacity>
 struct FixedOStream : private FixedOStreamStorage<Capacity>, public std::ostream {
-    FixedOStream() : FixedOStreamStorage<Capacity>(), std::ostream(&this->m_storage) {}
+    FixedOStream() : FixedOStreamStorage<Capacity>(nullptr), std::ostream(&this->m_storage) {}
+    FixedOStream(FILE* file) : FixedOStreamStorage<Capacity>(file), std::ostream(&this->m_storage) {}
 
-    std::string_view sv() const {
-        const auto storage = this->m_storage;
-        return std::string_view(storage.c_str(), storage.size());
+    void clear_buffer() {
+        this->m_storage.clear();
+        this->clear();
     }
 
-    size_t size() const { return this->m_storage.size(); }
-    const char* c_str() { return this->m_storage.c_str(); }
+    std::string_view sv() const { return std::string_view(this->m_storage.pbase(), this->m_storage.size()); }
+};
+
+template <size_t Capacity>
+struct FixedCoutStream : public FixedOStream<Capacity> {
+    FixedCoutStream() : FixedOStream<Capacity>(stdout) {}
+};
+
+template <size_t Capacity>
+struct FixedCerrStream : public FixedOStream<Capacity> {
+    FixedCerrStream() : FixedOStream<Capacity>(stderr) {}
 };
 }  // namespace XPN

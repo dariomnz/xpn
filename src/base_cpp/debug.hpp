@@ -59,6 +59,12 @@ struct format_open_mode {
     format_open_mode(mode_t mode) : m_mode(mode) {}
     friend std::ostream &operator<<(std::ostream &os, const format_open_mode &open_mode);
 };
+struct format_bytes {
+    uint64_t bytes;
+    int precision;
+    explicit format_bytes(uint64_t b, int p = 2) : bytes(b), precision(p) {}
+    friend std::ostream &operator<<(std::ostream &os, const format_bytes &fb);
+};
 
 struct print_errno {
     ssize_t res;
@@ -72,8 +78,8 @@ struct print_errno {
 };
 
 struct static_debug_mutex {
-    static std::mutex &get() {
-        static std::mutex static_mutex;
+    static std::recursive_mutex &get() {
+        static std::recursive_mutex static_mutex;
         return static_mutex;
     }
 };
@@ -82,11 +88,9 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
 
 #define XPN_DEBUG_COMMON_HEADER                                                                                    \
     {                                                                                                              \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                      \
         out << "[" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ << "] [" \
             << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] ";                                              \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                      \
-        ::fflush(stderr);                                                                                          \
     }
 
 #ifdef DEBUG
@@ -94,20 +98,16 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
     {                                                                              \
         std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get()); \
         XPN_DEBUG_COMMON_HEADER                                                    \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                      \
         out << out_format << std::endl;                                            \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());      \
-        ::fflush(stderr);                                                          \
     }
 #else
 #define XPN_DEBUG(out_format)                                                      \
     if (::XPN::xpn_env::get_instance().xpn_debug) {                                \
         std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get()); \
         XPN_DEBUG_COMMON_HEADER                                                    \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                      \
         out << out_format << std::endl;                                            \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());      \
-        ::fflush(stderr);                                                          \
     }
 #endif
 
@@ -122,33 +122,31 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
 #define XPN_DEBUG_END XPN_DEBUG("End   " << __func__ << "()=" << res << print_errno(res));
 
 #ifdef DEBUG
-#define debug_error(out_format)                                                                                        \
-    {                                                                                                                  \
-        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                     \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                    \
-        out << "[ERROR] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
-            << std::endl;                                                                                              \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                          \
-        ::fflush(stderr);                                                                                              \
+#undef debug_error
+#define debug_error(out_format)                                                                                   \
+    {                                                                                                             \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                     \
+        out << "[ERROR] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
+            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;         \
     }
-#define debug_warning(out_format)                                                                          \
-    {                                                                                                      \
-        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                         \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                        \
-        out << "[WARNING] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " \
-            << out_format << std::endl;                                                                    \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                              \
-        ::fflush(stderr);                                                                                  \
+#undef debug_warning
+#define debug_warning(out_format)                                                                                   \
+    {                                                                                                               \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                  \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                       \
+        out << "[WARNING] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
+            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;           \
     }
-#define debug_info(out_format)                                                                                        \
-    {                                                                                                                 \
-        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                    \
-        ::XPN::FixedOStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                                   \
-        out << "[INFO] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
-            << std::endl;                                                                                             \
-        ::fprintf(stderr, "%.*s", static_cast<int>(out.size()), out.c_str());                                         \
-        ::fflush(stderr);                                                                                             \
+#undef debug_info
+#define debug_info(out_format)                                                                                   \
+    {                                                                                                            \
+        std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                               \
+        ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                    \
+        out << "[INFO] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
+            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;        \
     }
+#undef debug_info_fmt
 #define debug_info_fmt(...)                  \
     {                                        \
         char buff[::XPN::DEBUG_BUFFER_SIZE]; \
@@ -162,8 +160,21 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
 #define debug_info_fmt(...)
 #endif
 
-#define print(out_format) std::cout << out_format << std::endl;
+#undef print
+#define print(out_format)                                       \
+    do {                                                        \
+        ::XPN::FixedCoutStream<::XPN::DEBUG_BUFFER_SIZE> __out; \
+        __out << out_format << std::endl;                       \
+    } while (0);
+#undef print_fmt
+#define print_fmt(...)                       \
+    do {                                     \
+        char buff[::XPN::DEBUG_BUFFER_SIZE]; \
+        ::sprintf(buff, __VA_ARGS__);        \
+        print(buff);                         \
+    } while (0);
 
+#undef print_error
 #define print_error(out_format)                                                                                        \
     std::cerr << std::dec << "[ERROR] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] [" << __func__ << "] " \
               << out_format << " : " << std::strerror(errno) << std::endl;

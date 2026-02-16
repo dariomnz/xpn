@@ -19,9 +19,11 @@
  *
  */
 
-#include "debug.hpp"
+#include "base_cpp/debug.hpp"
 
 #include <fcntl.h>
+
+#include <cmath>
 
 namespace XPN {
 
@@ -30,9 +32,10 @@ std::ostream &operator<<(std::ostream &os, [[maybe_unused]] const get_time_stamp
     std::time_t actual_time = std::chrono::high_resolution_clock::to_time_t(now);
     std::tm tm = {};
     ::localtime_r(&actual_time, &tm);
+    
     auto millisec = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     os << tm.tm_year + 1900 << "-";
-    os << std::setw(2) << std::setfill('0') << tm.tm_mon << "-";
+    os << std::setw(2) << std::setfill('0') << (tm.tm_mon + 1) << "-";
     os << std::setw(2) << std::setfill('0') << tm.tm_mday << " ";
     os << std::setw(2) << std::setfill('0') << tm.tm_hour << ":";
     os << std::setw(2) << std::setfill('0') << tm.tm_min << ":";
@@ -99,4 +102,22 @@ std::ostream &operator<<(std::ostream &os, const format_open_mode &open_mode) {
     return os;
 }
 
+std::ostream &operator<<(std::ostream &os, const format_bytes &fb) {
+    static const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
+
+    if (fb.bytes == 0) return os << "0 B";
+
+    int i = static_cast<int>(std::floor(std::log(fb.bytes) / std::log(1024)));
+    if (i >= 6) i = 5;
+    if (i == 0) {
+        return os << fb.bytes << " " << units[i];
+    } else {
+        double value = fb.bytes / std::pow(1024, i);
+        auto old_precision = os.precision();
+
+        os << std::fixed << std::setprecision(fb.precision) << value << " " << units[i];
+        os.precision(old_precision);
+        return os;
+    }
+}
 }  // namespace XPN
