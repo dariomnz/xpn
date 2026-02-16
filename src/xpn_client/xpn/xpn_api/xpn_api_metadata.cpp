@@ -30,9 +30,9 @@ namespace XPN
     {
         XPN_DEBUG_BEGIN_CUSTOM(mdata.m_file.m_path);
         int res = 0;
-        
-        XPN_DEBUG("Read metadata from serv "<<mdata.master_file());
-        res = mdata.m_file.m_part.m_data_serv[mdata.master_file()]->nfi_read_mdata(mdata.m_file.m_path, mdata);
+        int master = mdata.master_file();
+        XPN_DEBUG("Read metadata from serv "<<master);
+        res = mdata.m_file.m_part.m_data_serv[master]->nfi_read_mdata(mdata.m_file.m_path, mdata);
 
         XPN_DEBUG(mdata);
 
@@ -65,8 +65,12 @@ namespace XPN
             server = (server+i) % mdata.m_file.m_part.m_data_serv.size();
             if (mdata.m_file.m_part.m_data_serv[server]->m_error != -1){
                 XPN_DEBUG("Write metadata to serv "<<server); 
+                res = mdata.m_file.initialize_vfh(server);
+                if (res < 0){
+                    continue;
+                }
                 tasks.launch([server, &mdata, only_file_size](){
-                    int res = mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_data, only_file_size);
+                    int res = mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_file.m_data_vfh[server], mdata.m_data, only_file_size);
                     return WorkerResult(res);
                 });
             }

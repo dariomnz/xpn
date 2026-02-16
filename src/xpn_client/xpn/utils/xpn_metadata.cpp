@@ -31,6 +31,7 @@ namespace XPN
 {
     
     void xpn_metadata::data::fill(const xpn_metadata& mdata){
+        *this = {};
         magic_number[0]     = MAGIC_NUMBER[0];
         magic_number[1]     = MAGIC_NUMBER[1];
         magic_number[2]     = MAGIC_NUMBER[2];
@@ -48,7 +49,7 @@ namespace XPN
         int master = xpn_path::hash(m_file.m_path, m_file.m_part.m_data_serv.size(), is_file);
         for (int i = 0; i < m_file.m_part.m_replication_level; i++)
         {
-            master = (master+1)%m_file.m_part.m_data_serv.size();
+            master = (master+i)%m_file.m_part.m_data_serv.size();
             if (!m_file.m_part.m_data_serv[master] || m_file.m_part.m_data_serv[master]->m_error != -1){
                 break;
             }
