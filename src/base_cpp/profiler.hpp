@@ -134,7 +134,7 @@ class profiler_timer {
 };
 }  // namespace XPN
 
-#define XPN_PROFILE 1
+#define XPN_PROFILE 0
 #if XPN_PROFILE
 #define XPN_PROFILE_BEGIN_SESSION(name) ::XPN::profiler::get_instance().begin_session(name)
 #define XPN_PROFILE_END_SESSION() ::XPN::profiler::get_instance().end_session()

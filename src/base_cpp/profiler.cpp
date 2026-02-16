@@ -37,7 +37,7 @@ void profiler_data::dump_data(std::ostream& json, std::string_view process_name)
     }
     json << "\"ph\":\"X\",";
     json << "\"pid\":\"" << process_name << "_" << m_pid << "\",";
-    json << "\"tid\":" << m_tid << ",";
+    json << "\"tid\":\"" << process_name << "_" << m_tid << "\",";
     json << "\"ts\":" << m_start;
     json << "}\n";
 }
