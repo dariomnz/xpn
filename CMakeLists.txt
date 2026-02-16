@@ -57,6 +57,8 @@ endif(ENABLE_MQTT_SERVER)
 
 link_libraries("pthread" "dl")
 
+# add_compile_options("-DDEBUG")
+add_subdirectory(libs/lz4)
 add_subdirectory(src/bypass)
 # add_compile_options("-DDEBUG")
 add_subdirectory(src/base_cpp)
