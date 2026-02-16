@@ -31,10 +31,10 @@ module load cmake mpich
 
 # 2) working path...
 MPICC_PATH=/opt/ohpc/pub/mpi/mpich-4.3.0-ofi
-FABRIC_PATH=$HOME/dariomnz/bin/libfabric
-DMTCP_PATH=$HOME/dariomnz/src/mana/dmtcp
+FABRIC_PATH=$HOME/bin/libfabric
+DMTCP_PATH=$HOME/src/mana/dmtcp
 FUSE_PATH="-D ENABLE_FUSE=on -D FUSE_LIBRARY=/usr/lib64/libfuse3.so -D FUSE_INCLUDE_DIR=/usr/include/fuse3"
-INSTALL_PATH=$HOME/dariomnz/bin/
+INSTALL_PATH=$HOME/bin/
 BASE_PATH=$(dirname $0)
 
 export LD_LIBRARY_PATH=$MPICC_PATH/lib:$FABRIC_PATH/lib:$LD_LIBRARY_PATH

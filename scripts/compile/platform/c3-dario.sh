@@ -31,8 +31,8 @@ spack load autoconf m4
 
 # 2) working path...
 MPICC_PATH=/opt/ohpc/pub/mpi/mpich-4.3.0-ofi
-FABRIC_PATH=$HOME/dariomnz/bin/libfabric
-INSTALL_PATH=$HOME/dariomnz/bin/
+FABRIC_PATH=$HOME/bin/libfabric
+INSTALL_PATH=$HOME/bin/
 BASE_PATH=$(dirname $0)
 
 export LD_LIBRARY_PATH=$MPICC_PATH/lib:$FABRIC_PATH/lib:$LD_LIBRARY_PATH
