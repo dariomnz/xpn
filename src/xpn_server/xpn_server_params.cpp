@@ -26,6 +26,7 @@
 #include "base_cpp/debug.hpp"
 #include "base_cpp/ns.hpp"
 #include "base_cpp/workers.hpp"
+#include "xpn_server/filesystem/xpn_server_filesystem.hpp"
 
 namespace XPN {
 
@@ -77,6 +78,8 @@ void xpn_server_params::show() {
     }
     if (fs_mode == filesystem_mode::xpn) {
         printf(" |\tproxy mode: \ton\n");
+    } else if (fs_mode == filesystem_mode::memory) {
+        printf(" |\tmemoty mode: \ton\n");
     }
     if (mqtt_qos != DEFAULT_XPN_SERVER_MQTT_QOS || srv_type == server_type::MQTT) {
         printf(" |\tmqtt qos: \t%d\n", mqtt_qos);
@@ -137,6 +140,8 @@ xpn_server_params::xpn_server_params(int _argc, char *_argv[]) {
             shutdown_hostlist = ++idx >= argc ? "" : argv[idx];
         } else if (arg == "-w" || arg == "--await") {
             await_stop = 1;
+        } else if (arg == "--memory") {
+            fs_mode = filesystem_mode::memory;
         } else if (arg == "-x" || arg == "--proxy") {
             fs_mode = filesystem_mode::xpn;
         } else if (arg == "-p" || arg == "--port") {

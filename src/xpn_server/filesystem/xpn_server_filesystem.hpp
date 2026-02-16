@@ -27,11 +27,13 @@
 
 #include <cstdint>
 #include <memory>
+#include <ostream>
 
 namespace XPN {
 enum class filesystem_mode {
     disk = 0,
     xpn = 1,
+    memory = 2,
 };
 
 class xpn_server_filesystem {

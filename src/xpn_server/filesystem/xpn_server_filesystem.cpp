@@ -24,6 +24,7 @@
 #include <iostream>
 
 #include "xpn_server_filesystem_disk.hpp"
+#include "xpn_server_filesystem_memory.hpp"
 #include "xpn_server_filesystem_xpn.hpp"
 
 namespace XPN {
@@ -37,6 +38,10 @@ std::unique_ptr<xpn_server_filesystem> xpn_server_filesystem::Create(filesystem_
         }
         case filesystem_mode::xpn: {
             ret = std::make_unique<xpn_server_filesystem_xpn>();
+            break;
+        }
+        case filesystem_mode::memory: {
+            ret = std::make_unique<xpn_server_filesystem_memory>();
             break;
         }
     }
