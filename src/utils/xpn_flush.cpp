@@ -19,361 +19,233 @@
  *
  */
 
-
 /* ... Include / Inclusion ........................................... */
 
-  #include <stdio.h>
-  #include <unistd.h>
-  #include <sys/types.h>
-  #include <stdlib.h>
-  #include <string.h>
-  #include <fcntl.h>
-  #include <linux/limits.h>
-  #include <sys/stat.h>
-  #include <dirent.h>
-  #include "mpi.h"
-  #include "xpn/xpn_file.hpp"
-  #include "xpn/xpn_partition.hpp"
-  #include "xpn/xpn_metadata.hpp"
-  #include "base_cpp/filesystem.hpp"
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
+#include <atomic>
+#include <string>
+#include <vector>
+
+#include "base_cpp/debug.hpp"
+#include "base_cpp/filesystem.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
+#include "base_cpp/workers.hpp"
+#include "mpi.h"
+#include "xpn/xpn_file.hpp"
+#include "xpn/xpn_metadata.hpp"
+#include "xpn/xpn_partition.hpp"
 
 /* ... Const / Const ................................................. */
 
-  #ifndef _LARGEFILE_SOURCE
-  #define _LARGEFILE_SOURCE
-  #endif
+using namespace XPN;
 
-  #ifndef _FILE_OFFSET_BITS
-  #define _FILE_OFFSET_BITS 64
-  #endif
+struct FlushEntry {
+    char src_path[PATH_MAX];
+    char dest_path[PATH_MAX];
+    mode_t mode;
+    int is_file;  // 1 for file, 0 for dir, -1 for sentinel
+    xpn_metadata::data mdata;
+};
+int g_xpn_path_len = 0;
+std::atomic<int64_t> g_size_copied{0};
 
-  #define MIN(a,b) (((a)<(b))?(a):(b))
-  #define HEADER_SIZE 8192
-
-  char command[4*1024];
-  char src_path [PATH_MAX+5];
-  char dest_path [PATH_MAX+5];
-
-  int xpn_path_len = 0;
-
-  using namespace XPN;
 /* ... Functions / Funciones ......................................... */
 
-  int copy(char * entry, int is_file, char * dir_name, char * dest_prefix, int blocksize, int replication_level, int rank, int size)
-  {  
-    debug_info("entry "<<entry<<" is_file "<<is_file<<" dir_name "<<dir_name<<" dest_prefix "<<dest_prefix<<" blocksize "<<blocksize<<" replication_level "<<replication_level<<" rank "<<rank<<" size "<<size);
-    int  ret;
+/**
+ * @brief Task-based copy of file blocks owned by this rank.
+ */
+WorkerResult copy_file_blocks_task(std::unique_ptr<FlushEntry> entry, xpn_partition& dummy_part, int rank) {
+    int fd_src = open64(entry->src_path, O_RDONLY | O_LARGEFILE);
+    if (fd_src < 0) return WorkerResult(-1);
 
-    int fd_src, fd_dest, replication = 0;
-    int aux_serv;
-    char *buf ;
-    int buf_len;
-    int64_t offset_dest ;
-    int64_t offset_src;
-    int64_t read_size = 0, write_size;
-    struct stat st_src = {};
-
-    //Alocate buffer
-    buf_len = blocksize;
-    buf = (char *) malloc(buf_len) ;
-    if (NULL == buf) {
-      perror("malloc: ");
-      return -1;
+    int fd_dest = open64(entry->dest_path, O_WRONLY | O_CREAT | O_LARGEFILE, entry->mode);
+    if (fd_dest < 0) {
+        close(fd_src);
+        return WorkerResult(-1);
     }
 
-    //Generate source path
-    strcpy(src_path, entry);
-
-    //Generate destination path
-    char * aux_entry = entry + strlen(dir_name);
-    sprintf( dest_path, "%s/%s", dest_prefix, aux_entry );
-
-    if (rank == 0){
-      printf("%s -> %s\n", src_path, dest_path);
+    if (rank == 0) {
+        printf("Size: %ld %s -> %s\n", entry->mdata.file_size, entry->src_path, entry->dest_path);
     }
 
-    ret = stat(src_path, &st_src);
-    if (ret < 0 && errno != ENOENT){
-      perror("stat: ");
-      free(buf) ;
-      return -1;
-    }
-    if (!is_file)
-    {
-      if (rank == 0)
-      {
-        ret = mkdir(dest_path, st_src.st_mode);
-        if ( ret < 0 && errno != EEXIST)
-        {
-          perror("mkdir: ");
-          free(buf) ;
-          return -1;
-        }
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-    }
-    else if (is_file)
-    {
-      xpn_partition part("xpn", replication_level, blocksize);
-      part.m_data_serv.resize(size);
-      std::string aux_str = &src_path[xpn_path_len];
-      xpn_file file(aux_str, part);
-      file.m_mdata.m_data.fill(file.m_mdata);
-      int master_node = file.m_mdata.master_file();
-      if (rank == master_node)
-      {
-        fd_dest = creat(dest_path, st_src.st_mode);
-        if ( fd_dest < 0 ){
-          perror("creat 1: ");
-          printf("creat: %s mode %d\n", dest_path, st_src.st_mode);
-        }else{
-          close(fd_dest);
-        }
-      }
-      MPI_Bcast(&fd_dest, 1, MPI_INT, master_node, MPI_COMM_WORLD);
-      if (fd_dest < 0)
-      {
-        free(buf) ;
-        return -1;
-      }
-      fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
-      if ( fd_src < 0 && errno != ENOENT )
-      {
-        perror("open 1: ");
-        printf("open 1: %s\n", src_path);
-        free(buf) ;
-        return -1;
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-      fd_dest = open64(dest_path, O_WRONLY | O_LARGEFILE);
-      if ( fd_dest < 0 )
-      {
-        perror("open 2: ");
-        printf("open 2: %s\n", dest_path);
-        free(buf) ;
-        return -1;
-      }
+    xpn_file file("", dummy_part);
+    file.m_mdata.m_data = entry->mdata;
 
-      if (rank == master_node){
-        ret = filesystem::read(fd_src, &file.m_mdata.m_data, sizeof(file.m_mdata.m_data));
-        // To debug
-        // XpnPrintMetadata(&mdata);
-      }
-      
-      debug_info("Rank "<<rank<<" mdata " <<file.m_mdata.m_data.magic_number[0]
-                                          <<file.m_mdata.m_data.magic_number[1]
-                                          <<file.m_mdata.m_data.magic_number[2]);
-      MPI_Bcast(&file.m_mdata.m_data, sizeof(file.m_mdata.m_data), MPI_CHAR, master_node, MPI_COMM_WORLD);
-      debug_info("After bcast Rank "<<rank<<" mdata " <<file.m_mdata.m_data.magic_number[0]
-                                                      <<file.m_mdata.m_data.magic_number[1]
-                                                      <<file.m_mdata.m_data.magic_number[2]);
-      #ifdef DEBUG
-      std::cerr<<file.m_mdata<<std::endl;
-      #endif
-      if (!file.m_mdata.m_data.is_valid()){
-        free(buf);
-        return -1;
-      }
+    const int64_t file_size = entry->mdata.file_size;
+    const uint64_t block_size = entry->mdata.block_size;
 
-      int64_t ret_1;
-      offset_src = 0;
-      offset_dest = -blocksize;
+    int64_t bytes_copied_local = 0;
+    int serv;
+    int64_t off_src;
 
-      do
-      { 
-        //TODO: check when the server has error and data is corrupt for fault tolerance
-        do{
-          offset_dest += blocksize;
-          for (int i = 0; i < replication_level+1; i++)
-          {
-            file.map_offset_mdata(offset_dest, i, offset_src, aux_serv);
-            
-            debug_info("try rank "<<rank<<" offset_dest "<<offset_dest<<" offset_src "<<offset_src<<" aux_server "<<aux_serv<<" file_size "<<file.m_mdata.m_data.file_size);
-            if (aux_serv == rank){
-              goto exit_search;
+    for (int64_t off_dst = 0; off_dst < file_size; off_dst += block_size) {
+        file.map_offset_mdata(off_dst, 0, off_src, serv);
+        if (serv == rank) {
+            off64_t src_pos = off_src + xpn_metadata::HEADER_SIZE;
+            if (lseek64(fd_dest, off_dst, SEEK_SET) >= 0) {
+                int64_t bytes_to_send = std::min(block_size, (uint64_t)(file_size - off_dst));
+                ssize_t sent = filesystem::sendfile(fd_dest, fd_src, &src_pos, bytes_to_send);
+                if (sent > 0) bytes_copied_local += sent;
             }
-          }
-        }while(offset_dest < static_cast<int64_t>(file.m_mdata.m_data.file_size));
-        exit_search:
-        if (aux_serv != rank){
-          continue;
         }
-        debug_info("rank "<<rank<<" offset_dest "<<offset_dest<<" offset_src "<<offset_src<<" aux_server "<<aux_serv);
-        if(st_src.st_mtime != 0 && offset_src > st_src.st_size){
-          break;
-        }
-        if (offset_dest > static_cast<int64_t>(file.m_mdata.m_data.file_size)){
-          break;
-        }
-        if (replication != 0){
-          offset_src += blocksize;
-          continue;
-        }
-
-        ret_1 = lseek64(fd_src, offset_src + HEADER_SIZE, SEEK_SET) ;
-        if (ret_1 < 0) {
-          perror("lseek: ");
-          break;
-        }
-        read_size = filesystem::read(fd_src, buf, buf_len);
-        if (read_size <= 0){
-          break;
-        }
-
-        ret_1 = lseek64(fd_dest, offset_dest, SEEK_SET) ;
-        if (ret_1 < 0) {
-          perror("lseek: ");
-          break;
-        }
-        write_size = filesystem::write(fd_dest, buf, read_size);
-        if (write_size != read_size){
-          perror("write: ");
-          break;
-        }
-        debug_info("rank "<<rank<<" write "<<write_size<<" in offset_dest "<<offset_dest<<" from offset_src "<<offset_src);
-      }
-      while(read_size > 0);
-
-      close(fd_src);
-      unlink(src_path);
-      close(fd_dest);
     }
-    
-    free(buf);
-    return 0;
-  }
 
+    close(fd_src);
+    close(fd_dest);
 
-  int list (char * dir_name, char * dest_prefix, int blocksize, int replication_level, int rank, int size)
-  {
-    debug_info("dir_name "<<dir_name<<" dest_prefix "<<dest_prefix<<" blocksize "<<blocksize<<" replication_level "<<replication_level<<" rank "<<rank<<" size "<<size);
-    
-    int ret;
-    DIR* dir = NULL;
-    struct stat stat_buf;
-    char path [PATH_MAX];
-    char path_dst [PATH_MAX];
-    int buff_coord = 1;
+    g_size_copied += bytes_copied_local;
+    return WorkerResult(0);
+}
 
-
-    xpn_partition part("xpn", replication_level, blocksize);
-    part.m_data_serv.resize(size);
-    std::string aux_str = &src_path[xpn_path_len];
-    xpn_file file(aux_str, part);
-    file.m_mdata.m_data.fill(file.m_mdata);
+template <typename Handler, size_t Capacity>
+void flush_file(FixedTaskQueue<Handler, Capacity>& tasks, std::unique_ptr<FlushEntry> entry_ptr, xpn_partition& dummy_part,
+                int rank) {
+    std::string rel_path = &entry_ptr->src_path[g_xpn_path_len];
+    xpn_file file(rel_path, dummy_part);
     int master_node = file.m_mdata.master_file();
-    if (rank == master_node){
-      dir = opendir(dir_name);
-      if(dir == NULL)
-      {
-        perror("opendir:");
-        return -1;
-      }
-      struct dirent*  entry;
-      entry = readdir(dir);
-      
 
-      while(entry != NULL)
-      {
-        if (! strcmp(entry->d_name, ".")){
-          entry = readdir(dir);
-          continue;
+    if (rank == master_node) {
+        int fd = open(entry_ptr->src_path, O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, &entry_ptr->mdata, sizeof(entry_ptr->mdata)) != sizeof(entry_ptr->mdata)) {
+                entry_ptr->mdata = {};
+            }
+            close(fd);
         }
+    }
+    MPI_Bcast(&entry_ptr->mdata, sizeof(entry_ptr->mdata), MPI_CHAR, master_node, MPI_COMM_WORLD);
 
-        if (! strcmp(entry->d_name, "..")){
-          entry = readdir(dir);
-          continue;
+    if (entry_ptr->mdata.is_valid()) {
+        tasks.launch([entry_ptr = std::move(entry_ptr), &dummy_part, rank]() mutable {
+            return copy_file_blocks_task(std::move(entry_ptr), dummy_part, rank);
+        });
+    }
+}
+/**
+ * @brief Recursive traversal of the XPN physical storage.
+ * Rank 0 performs the scan and broadcasts entries one by one to all ranks.
+ */
+void flush(const char* src_root, const char* dest_root, int rank, int size, workers& pool, int blocksize,
+           int replication_level) {
+    auto result_handler = []([[maybe_unused]] const WorkerResult& r) { return true; };
+    auto tasks = FixedTaskQueueFactory<1024>::Create(pool, result_handler);
+
+    xpn_partition dummy_part("xpn", replication_level, blocksize);
+    dummy_part.m_data_serv.resize(size);
+
+    if (rank == 0) {
+        std::vector<std::pair<std::string, std::string>> stack;
+        stack.push_back({src_root, dest_root});
+
+        while (!stack.empty()) {
+            auto current = stack.back();
+            stack.pop_back();
+
+            DIR* dir = opendir(current.first.c_str());
+            if (!dir) continue;
+
+            struct dirent* de;
+            struct stat st;
+            while ((de = readdir(dir)) != NULL) {
+                if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+
+                auto entry_ptr = std::make_unique<FlushEntry>();
+                snprintf(entry_ptr->src_path, PATH_MAX, "%s/%s", current.first.c_str(), de->d_name);
+                snprintf(entry_ptr->dest_path, PATH_MAX, "%s/%s", current.second.c_str(), de->d_name);
+
+                if (stat(entry_ptr->src_path, &st) == 0) {
+                    entry_ptr->mode = st.st_mode;
+                    if (S_ISDIR(st.st_mode)) {
+                        entry_ptr->is_file = 0;
+                        mkdir(entry_ptr->dest_path, entry_ptr->mode);
+                        stack.push_back({entry_ptr->src_path, entry_ptr->dest_path});
+                    } else {
+                        entry_ptr->is_file = 1;
+                        int signal = 1;  // File signal
+                        MPI_Bcast(&signal, 1, MPI_INT, 0, MPI_COMM_WORLD);
+                        MPI_Bcast(entry_ptr.get(), sizeof(FlushEntry), MPI_CHAR, 0, MPI_COMM_WORLD);
+
+                        flush_file(tasks, std::move(entry_ptr), dummy_part, rank);
+                    }
+                }
+            }
+            closedir(dir);
         }
+        int signal = 0;
+        MPI_Bcast(&signal, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    } else {
+        while (true) {
+            int signal;
+            MPI_Bcast(&signal, 1, MPI_INT, 0, MPI_COMM_WORLD);
+            if (signal == 0) break;
 
-        sprintf(path, "%s/%s", dir_name, entry->d_name);
-        sprintf(path_dst, "%s/%s", dest_prefix, entry->d_name);
+            auto entry_ptr = std::make_unique<FlushEntry>();
+            MPI_Bcast(entry_ptr.get(), sizeof(FlushEntry), MPI_CHAR, 0, MPI_COMM_WORLD);
 
-        ret = stat(path, &stat_buf);
-        if (ret < 0) 
-        {
-          perror("stat: ");
-          printf("%s\n", path);
-          entry = readdir(dir);
-          continue;
+            flush_file(tasks, std::move(entry_ptr), dummy_part, rank);
         }
-
-        MPI_Bcast(&buff_coord, 1, MPI_INT, master_node, MPI_COMM_WORLD);
-        MPI_Bcast(&path, sizeof(path), MPI_CHAR, master_node, MPI_COMM_WORLD);
-        MPI_Bcast(&path_dst, sizeof(path_dst), MPI_CHAR, master_node, MPI_COMM_WORLD);
-        MPI_Bcast(&stat_buf, sizeof(stat_buf), MPI_CHAR, master_node, MPI_COMM_WORLD);
-        int is_file = !S_ISDIR(stat_buf.st_mode);
-        copy(path, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
-        if (!is_file){
-          list(path, path_dst, blocksize, replication_level, rank, size);
-        }
-        
-
-        entry = readdir(dir);
-      }
-      buff_coord = 0;
-      MPI_Bcast(&buff_coord, 1, MPI_INT, master_node, MPI_COMM_WORLD);
-      closedir(dir);
-    }else{
-      while(buff_coord == 1){
-        MPI_Bcast(&buff_coord, 1, MPI_INT, master_node, MPI_COMM_WORLD);
-        if (buff_coord == 0) break;
-        MPI_Bcast(&path, sizeof(path), MPI_CHAR, master_node, MPI_COMM_WORLD);
-        MPI_Bcast(&path_dst, sizeof(path_dst), MPI_CHAR, master_node, MPI_COMM_WORLD);
-        MPI_Bcast(&stat_buf, sizeof(stat_buf), MPI_CHAR, master_node, MPI_COMM_WORLD);
-
-        int is_file = !S_ISDIR(stat_buf.st_mode);
-        copy(path, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
-        if (!is_file){
-          list(path, path_dst, blocksize, replication_level, rank, size);
-        }
-      }
     }
 
-    return 0;
-  }
+    tasks.wait_remaining();
+}
 
-
-  int main(int argc, char *argv[])
-  {   
+int main(int argc, char* argv[]) {
     int rank, size;
     int replication_level = 0;
     int blocksize = 524288;
     double start_time;
-    //
-    // Check arguments...
-    //
-    if ( argc < 3 )
-    {
-      printf("Usage:\n");
-      printf(" ./%s <origin partition> <destination local path> <optional destination block size> <optional replication level>\n", argv[0]);
-      printf("\n");
-      return -1;
+
+    if (argc < 3) {
+        printf("Usage:\n");
+        printf(" ./%s <origin partition> <destination local path> [blocksize] [replication]\n", argv[0]);
+        return -1;
     }
-    
-    if ( argc >= 5){
-      replication_level = atoi(argv[4]);
-    }
-    if ( argc >= 4){
-      blocksize = atoi(argv[3]);
-    }
-    
+
+    if (argc >= 5) replication_level = atoi(argv[4]);
+    if (argc >= 4) blocksize = atoi(argv[3]);
+
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     start_time = MPI_Wtime();
-    if (rank == 0){
-      printf("Copying from %s to %s blocksize %d replication_level %d \n", argv[1], argv[2], blocksize, replication_level);
-    }
-    xpn_path_len = strlen(argv[1]);
-    list (argv[1], argv[2], blocksize, replication_level, rank, size);
-    MPI_Barrier(MPI_COMM_WORLD);
-    if (rank == 0){
-      printf("Flush elapsed time %f mseg\n", (MPI_Wtime() - start_time)*1000);
-    }
-    MPI_Finalize();
 
+    if (rank == 0) {
+        printf("Flushing from %s to %s (BlockSize: %d, Replication: %d)\n", argv[1], argv[2], blocksize,
+               replication_level);
+        mkdir(argv[2], 0755);
+    }
+
+    g_xpn_path_len = strlen(argv[1]);
+
+    auto pool = workers::Create(workers_mode::thread_pool);
+
+    flush(argv[1], argv[2], rank, size, *pool, blocksize, replication_level);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    int64_t total_size_copied = 0;
+    int64_t local_size = g_size_copied.load();
+    MPI_Reduce(&local_size, &total_size_copied, 1, MPI_INT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    double total_time = MPI_Wtime() - start_time;
+    if (rank == 0) {
+        printf("Flush completed in %.2f ms\n", total_time * 1000.0);
+        print("Total data moved: " << format_bytes(total_size_copied) << " ("
+                                   << format_bytes(total_size_copied / total_time) << "/s)");
+    }
+
+    MPI_Finalize();
     return 0;
-  }
+}
 
 /* ................................................................... */

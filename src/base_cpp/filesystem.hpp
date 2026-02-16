@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <sys/sendfile.h>
 #include <unistd.h>
 
 #include <base_cpp/debug.hpp>
@@ -30,6 +31,29 @@ namespace XPN {
 
 class filesystem {
    public:
+    static int64_t sendfile(int out_fd, int in_fd, off_t* offset, uint64_t len) {
+        int64_t total_sent = 0;
+        ssize_t r;
+        uint64_t remaining = len;
+
+        debug_info(">> Begin Sendfile");
+
+        while (remaining > 0) {
+            r = PROXY(sendfile)(out_fd, in_fd, offset, remaining);
+
+            if (r <= 0) {
+                if (total_sent == 0) total_sent = r;
+                break;
+            }
+
+            total_sent += r;
+            remaining -= r;
+        }
+
+        debug_info(">> End Sendfile = " << total_sent);
+        return total_sent;
+    }
+
     static int64_t write(int fd, const void* data, uint64_t len) {
         int64_t ret = 0;
         int r;

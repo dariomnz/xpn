@@ -20,16 +20,21 @@
  */
 // #define DEBUG
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <stddef.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "base_cpp/filesystem.hpp"
+#include "base_cpp/fixed_task_queue.hpp"
 #include "base_cpp/timer.hpp"
+#include "base_cpp/workers.hpp"
 #include "xpn/xpn_file.hpp"
 #include "xpn/xpn_metadata.hpp"
 #include "xpn/xpn_partition.hpp"
@@ -39,288 +44,186 @@
 #ifdef ENABLE_FABRIC_SERVER
 #include "lfi.h"
 #include "lfi_coll.h"
+#include "lfi_error.h"
 #endif
 
 namespace XPN {
 
+struct FlushEntry {
+    char src_path[PATH_MAX];
+    char dest_path[PATH_MAX];
+    mode_t mode;
+    xpn_metadata::data mdata;
+};
+
+struct PreloadEntry {
+    char src_path[PATH_MAX];
+    char dest_path[PATH_MAX];
+    mode_t mode;
+    int64_t file_size;
+};
+
+#define CHECK_LFI(func)                                                                                 \
+    do {                                                                                                \
+        auto ___check_lfi = func;                                                                       \
+        if (___check_lfi != LFI_SUCCESS) {                                                              \
+            print("Error running " << #func << " in " << ::XPN::file_name(__FILE__) << ":" << __LINE__  \
+                                   << " error: " << ___check_lfi << " " << lfi_strerror(___check_lfi)); \
+        }                                                                                               \
+    } while (0);
+
 #ifdef ENABLE_FABRIC_SERVER
-lfi_group group;
-#endif
-char src_path[PATH_MAX + 5];
-char dest_path[PATH_MAX + 5];
 
-int xpn_path_len = 0;
+WorkerResult flush_file_blocks_task(std::unique_ptr<FlushEntry> entry, xpn_partition &dummy_part, int rank,
+                                    std::atomic<int64_t> &g_size_copied) {
+    debug_info(entry->src_path << " " << entry->dest_path << " " << entry->mdata.file_size << " "
+                               << format_open_mode(entry->mode) << " " << rank << " "
+                               << " " << g_size_copied.load());
+    int fd_src = open64(entry->src_path, O_RDONLY | O_LARGEFILE);
+    if (fd_src < 0) return WorkerResult(-1);
 
-int flush_copy([[maybe_unused]] const char *entry, [[maybe_unused]] int is_file, [[maybe_unused]] const char *dir_name,
-               [[maybe_unused]] const char *dest_prefix, [[maybe_unused]] int blocksize,
-               [[maybe_unused]] int replication_level, [[maybe_unused]] int rank, [[maybe_unused]] int size) {
-    debug_info("BEGIN entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix "
-                              << dest_prefix << " blocksize " << blocksize << " replication_level " << replication_level
-                              << " rank " << rank << " size " << size);
-#ifdef ENABLE_FABRIC_SERVER
-    int ret;
-
-    int fd_src, fd_dest, replication = 0;
-    int aux_serv;
-    char *buf;
-    int buf_len;
-    off64_t offset_dest;
-    off_t offset_src;
-    ssize_t read_size, write_size;
-    struct stat st_src = {};
-    // Alocate buffer
-    buf_len = blocksize;
-    buf = (char *)malloc(buf_len);
-    if (NULL == buf) {
-        print_error("malloc: ");
-        return -1;
+    int fd_dest = open64(entry->dest_path, O_WRONLY | O_CREAT | O_LARGEFILE, entry->mode);
+    if (fd_dest < 0) {
+        close(fd_src);
+        return WorkerResult(-1);
     }
-
-    // Generate source path
-    strcpy(src_path, entry);
-
-    // Generate destination path
-    const char *aux_entry = entry + strlen(dir_name);
-    sprintf(dest_path, "%s/%s", dest_prefix, aux_entry);
 
     if (rank == 0) {
-        print("flush: " << src_path << " -> " << dest_path);
+        print("Size: " << format_bytes(entry->mdata.file_size) << " " << entry->src_path << " -> " << entry->dest_path);
     }
 
-    ret = stat(src_path, &st_src);
-    if (ret < 0 && errno != ENOENT) {
-        print_error("stat: " << src_path);
-        free(buf);
-        return -1;
-    }
-    if (!is_file) {
-        if (rank == 0) {
-            ret = mkdir(dest_path, st_src.st_mode);
-            if (ret < 0 && errno != EEXIST) {
-                print_error("mkdir: " << dest_path);
-                free(buf);
-                return -1;
-            }
-        }
-        lfi_barrier(&group);
-    } else if (is_file) {
-        xpn_partition part("xpn", replication_level, blocksize);
-        part.m_data_serv.resize(size);
-        std::string aux_str = &src_path[xpn_path_len];
-        xpn_file file(aux_str, part);
-        file.m_mdata.m_data.fill(file.m_mdata);
-        int master_node = file.m_mdata.master_file();
-        if (rank == master_node) {
-            fd_dest = creat(dest_path, st_src.st_mode);
-            if (fd_dest < 0) {
-                print_error("creat 1: " << dest_path);
-                printf("creat: %s mode %d\n", dest_path, st_src.st_mode);
+    xpn_file file("", dummy_part);
+    file.m_mdata.m_data = entry->mdata;
+
+    const int64_t file_size = entry->mdata.file_size;
+    const uint64_t block_size = entry->mdata.block_size;
+
+    int64_t bytes_copied_local = 0;
+    int serv;
+    int64_t off_src;
+
+    for (int64_t off_dst = 0; off_dst < file_size; off_dst += block_size) {
+        file.map_offset_mdata(off_dst, 0, off_src, serv);
+        if (serv == rank) {
+            off64_t src_pos = off_src + xpn_metadata::HEADER_SIZE;
+            if (lseek64(fd_dest, off_dst, SEEK_SET) >= 0) {
+                int64_t bytes_to_send = std::min(block_size, (uint64_t)(file_size - off_dst));
+                ssize_t sent = filesystem::sendfile(fd_dest, fd_src, &src_pos, bytes_to_send);
+                if (sent > 0)
+                    bytes_copied_local += sent;
+                else if (sent < 0) {
+                    perror("sendfile flush");
+                }
             } else {
+                perror("lseek64 flush");
+                close(fd_src);
                 close(fd_dest);
+                return WorkerResult(-1);
             }
         }
-        lfi_broadcast(&group, master_node, &fd_dest, sizeof(fd_dest));
-        if (fd_dest < 0) {
-            free(buf);
-            return -1;
-        }
-        fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
-        if (fd_src < 0 && errno != ENOENT) {
-            print_error("open 1: " << src_path);
-            free(buf);
-            return -1;
-        }
-        lfi_barrier(&group);
-        fd_dest = open64(dest_path, O_WRONLY | O_LARGEFILE);
-        if (fd_dest < 0) {
-            print_error("open 2: " << dest_path);
-            free(buf);
-            return -1;
-        }
+    }
 
-        if (rank == master_node) {
-            ret = filesystem::read(fd_src, &file.m_mdata.m_data, sizeof(file.m_mdata.m_data));
-            // To debug
-            // XpnPrintMetadata(&mdata);
+    close(fd_src);
+    close(fd_dest);
+
+    g_size_copied += bytes_copied_local;
+    return WorkerResult(0);
+}
+
+template <typename Handler, size_t Capacity>
+void flush_file(lfi_group *group, FixedTaskQueue<Handler, Capacity> &tasks, std::unique_ptr<FlushEntry> entry_ptr,
+                xpn_partition &dummy_part, int xpn_base_path_len, int rank, std::atomic<int64_t> &g_size_copied) {
+    debug_info(entry_ptr->src_path << " " << entry_ptr->dest_path << " " << entry_ptr->mdata.file_size << " "
+                                   << format_open_mode(entry_ptr->mode) << " " << rank << " "
+                                   << " " << g_size_copied.load());
+    std::string rel_path = &entry_ptr->src_path[xpn_base_path_len];
+    xpn_file file(rel_path, dummy_part);
+    int master_node = file.m_mdata.master_file();
+
+    if (rank == master_node) {
+        int fd = open(entry_ptr->src_path, O_RDONLY);
+        if (fd >= 0) {
+            if (read(fd, &entry_ptr->mdata, sizeof(entry_ptr->mdata)) != sizeof(entry_ptr->mdata)) {
+                entry_ptr->mdata = {};
+            }
+            close(fd);
+        } else {
+            perror("open flush");
         }
+    }
+    CHECK_LFI(lfi_broadcast(group, master_node, &entry_ptr->mdata, sizeof(entry_ptr->mdata)));
 
-        debug_info("Rank " << rank << " mdata " << file.m_mdata.m_data.magic_number[0]
-                           << file.m_mdata.m_data.magic_number[1] << file.m_mdata.m_data.magic_number[2]);
-        lfi_broadcast(&group, master_node, &file.m_mdata.m_data, sizeof(file.m_mdata.m_data));
-        debug_info("After bcast Rank " << rank << " mdata " << file.m_mdata.m_data.magic_number[0]
-                                       << file.m_mdata.m_data.magic_number[1] << file.m_mdata.m_data.magic_number[2]);
-#ifdef DEBUG
-        std::cerr << file.m_mdata << std::endl;
-#endif
-        if (!file.m_mdata.m_data.is_valid()) {
-            free(buf);
-            return -1;
-        }
+    if (entry_ptr->mdata.is_valid() && file.exist_in_serv(rank)) {
+        tasks.launch([entry = std::move(entry_ptr), &dummy_part, rank, &g_size_copied]() mutable {
+            return flush_file_blocks_task(std::move(entry), dummy_part, rank, g_size_copied);
+        });
+    } else {
+        printf("File have not valid mdata %s\n", entry_ptr->src_path);
+    }
+}
 
-        off64_t ret_1;
-        offset_src = 0;
-        offset_dest = -blocksize;
+void flush(lfi_group *group, int xpn_base_path_len, const char *src_root, const char *dest_root, int rank,
+           workers &pool, xpn_partition &dummy_part, std::atomic<int64_t> &g_size_copied) {
+    debug_info(src_root << " " << dest_root << " " << rank << " "
+                        << " " << g_size_copied.load());
+    auto result_handler = []([[maybe_unused]] const WorkerResult &r) { return true; };
+    auto tasks = FixedTaskQueueFactory<1024>::Create(pool, result_handler);
 
-        do {
-            // TODO: check when the server has error and data is corrupt for fault tolerance
-            do {
-                offset_dest += blocksize;
-                for (int i = 0; i < replication_level + 1; i++) {
-                    file.map_offset_mdata(offset_dest, i, offset_src, aux_serv);
+    if (rank == 0) {
+        std::vector<std::pair<std::string, std::string>> stack;
+        stack.push_back({src_root, dest_root});
 
-                    debug_info("try rank " << rank << " offset_dest " << offset_dest << " offset_src " << offset_src
-                                           << " aux_server " << aux_serv << " file_size "
-                                           << file.m_mdata.m_data.file_size);
-                    if (aux_serv == rank) {
-                        goto exit_search;
+        while (!stack.empty()) {
+            auto current = stack.back();
+            stack.pop_back();
+
+            DIR *dir = opendir(current.first.c_str());
+            if (!dir) continue;
+
+            struct dirent *de;
+            struct stat st;
+            while ((de = readdir(dir)) != NULL) {
+                if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+
+                auto entry_ptr = std::make_unique<FlushEntry>();
+                snprintf(entry_ptr->src_path, PATH_MAX, "%s/%s", current.first.c_str(), de->d_name);
+                snprintf(entry_ptr->dest_path, PATH_MAX, "%s/%s", current.second.c_str(), de->d_name);
+
+                if (stat(entry_ptr->src_path, &st) == 0) {
+                    entry_ptr->mode = st.st_mode;
+                    if (S_ISDIR(st.st_mode)) {
+                        mkdir(entry_ptr->dest_path, entry_ptr->mode);
+                        stack.push_back({entry_ptr->src_path, entry_ptr->dest_path});
+                    } else {
+                        int signal = 1;  // File signal
+                        CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
+                        CHECK_LFI(lfi_broadcast(group, 0, entry_ptr.get(), sizeof(FlushEntry)));
+
+                        flush_file(group, tasks, std::move(entry_ptr), dummy_part, xpn_base_path_len, rank,
+                                   g_size_copied);
                     }
                 }
-            } while (offset_dest < static_cast<off64_t>(file.m_mdata.m_data.file_size));
-        exit_search:
-            if (aux_serv != rank) {
-                continue;
             }
-            debug_info("rank " << rank << " offset_dest " << offset_dest << " offset_src " << offset_src
-                               << " aux_server " << aux_serv);
-            if (st_src.st_mtime != 0 && offset_src > st_src.st_size) {
-                break;
-            }
-            if (offset_dest > static_cast<off64_t>(file.m_mdata.m_data.file_size)) {
-                break;
-            }
-            if (replication != 0) {
-                offset_src += blocksize;
-                continue;
-            }
-
-            ret_1 = lseek64(fd_src, offset_src + xpn_metadata::HEADER_SIZE, SEEK_SET);
-            if (ret_1 < 0) {
-                print_error("lseek: ");
-                break;
-            }
-            read_size = filesystem::read(fd_src, buf, buf_len);
-            if (read_size <= 0) {
-                break;
-            }
-
-            ret_1 = lseek64(fd_dest, offset_dest, SEEK_SET);
-            if (ret_1 < 0) {
-                print_error("lseek: ");
-                break;
-            }
-            write_size = filesystem::write(fd_dest, buf, read_size);
-            if (write_size != read_size) {
-                print_error("write: ");
-                break;
-            }
-            debug_info("rank " << rank << " write " << write_size << " in offset_dest " << offset_dest
-                               << " from offset_src " << offset_src);
-        } while (read_size > 0);
-
-        close(fd_src);
-        // unlink(src_path);
-        close(fd_dest);
-    }
-
-    free(buf);
-
-    debug_info("END entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix "
-                            << dest_prefix << " blocksize " << blocksize << " replication_level " << replication_level
-                            << " rank " << rank << " size " << size);
-#endif
-    return 0;
-}
-
-int flush_list([[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
-               [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
-               [[maybe_unused]] int size) {
-    debug_info("BEGIN dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
-                                 << " replication_level " << replication_level << " rank " << rank << " size " << size);
-
-#ifdef ENABLE_FABRIC_SERVER
-    int ret;
-    DIR *dir = NULL;
-    struct stat stat_buf;
-    char path[PATH_MAX];
-    char path_dst[PATH_MAX];
-    int buff_coord = 1;
-
-    xpn_partition part("xpn", replication_level, blocksize);
-    part.m_data_serv.resize(size);
-    std::string aux_str = &src_path[xpn_path_len];
-    xpn_file file(aux_str, part);
-    file.m_mdata.m_data.fill(file.m_mdata);
-    int master_node = file.m_mdata.master_file();
-    if (rank == master_node) {
-        dir = opendir(dir_name);
-        if (dir == NULL) {
-            print_error("opendir: " << dir_name);
-            return -1;
+            closedir(dir);
         }
-        struct dirent *entry;
-        entry = readdir(dir);
-
-        while (entry != NULL) {
-            if (!strcmp(entry->d_name, ".")) {
-                entry = readdir(dir);
-                continue;
-            }
-
-            if (!strcmp(entry->d_name, "..")) {
-                entry = readdir(dir);
-                continue;
-            }
-
-            sprintf(path, "%s/%s", dir_name, entry->d_name);
-            sprintf(path_dst, "%s/%s", dest_prefix, entry->d_name);
-
-            ret = stat(path, &stat_buf);
-            if (ret < 0) {
-                print_error("stat: " << path);
-                printf("%s\n", path);
-                entry = readdir(dir);
-                continue;
-            }
-            lfi_broadcast(&group, master_node, &buff_coord, sizeof(buff_coord));
-            lfi_broadcast(&group, master_node, &path, sizeof(path));
-            lfi_broadcast(&group, master_node, &path_dst, sizeof(path_dst));
-            lfi_broadcast(&group, master_node, &stat_buf, sizeof(stat_buf));
-            debug_info("broadcast from " << master_node << " buff_coord " << buff_coord << " path " << path
-                                         << " path_dst " << path_dst);
-            int is_file = !S_ISDIR(stat_buf.st_mode);
-            flush_copy(path, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
-            if (!is_file) {
-                flush_list(path, path_dst, blocksize, replication_level, rank, size);
-            }
-
-            entry = readdir(dir);
-        }
-        buff_coord = 0;
-        lfi_broadcast(&group, master_node, &buff_coord, sizeof(buff_coord));
-        closedir(dir);
+        int signal = 0;
+        CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
     } else {
-        while (buff_coord == 1) {
-            lfi_broadcast(&group, master_node, &buff_coord, sizeof(buff_coord));
-            if (buff_coord == 0) break;
-            lfi_broadcast(&group, master_node, &path, sizeof(path));
-            lfi_broadcast(&group, master_node, &path_dst, sizeof(path_dst));
-            lfi_broadcast(&group, master_node, &stat_buf, sizeof(stat_buf));
-            debug_info("broadcast from " << master_node << " buff_coord " << buff_coord << " path " << path
-                                         << " path_dst " << path_dst);
+        while (true) {
+            int signal;
+            CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
+            if (signal == 0) break;
 
-            int is_file = !S_ISDIR(stat_buf.st_mode);
-            flush_copy(path, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
-            if (!is_file) {
-                flush_list(path, path_dst, blocksize, replication_level, rank, size);
-            }
+            auto entry_ptr = std::make_unique<FlushEntry>();
+            CHECK_LFI(lfi_broadcast(group, 0, entry_ptr.get(), sizeof(FlushEntry)));
+
+            flush_file(group, tasks, std::move(entry_ptr), dummy_part, xpn_base_path_len, rank, g_size_copied);
         }
     }
 
-    debug_info("END dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
-                               << " replication_level " << replication_level << " rank " << rank << " size " << size);
-#endif
-    return 0;
+    tasks.wait_remaining();
 }
+#endif
 
 void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_server_flush_preload_ckpt &head,
                           int rank_client_id, int tag_client_id) {
@@ -354,7 +257,7 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
     for (auto &&hostname : hostnames) {
         hostnames_c_str.emplace_back(hostname.c_str());
     }
-
+    lfi_group group = {};
     ret = lfi_group_create(hostnames_c_str.data(), hostnames_c_str.size(), &group);
     if (ret < 0) {
         debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] << End lfi error " << lfi_strerror(ret));
@@ -364,14 +267,32 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
     }
 
     int rank, size;
-    lfi_group_rank(&group, &rank);
-    lfi_group_size(&group, &size);
+    CHECK_LFI(lfi_group_rank(&group, &rank));
+    CHECK_LFI(lfi_group_size(&group, &size));
+    double start_time = lfi_time(&group);
 
-    xpn_path_len = strlen(head.paths.path1());
-    flush_list(head.paths.path1(), head.paths.path2(), conf.partitions[0].bsize, conf.partitions[0].replication_level,
-               rank, size);
+    int xpn_base_path_len = strlen(head.paths.path1());
+    std::atomic<int64_t> g_size_copied{0};
+    xpn_partition dummy_part("xpn", conf.partitions[0].replication_level, conf.partitions[0].bsize);
+    dummy_part.m_data_serv.resize(size);
 
-    lfi_group_close(&group);
+    flush(&group, xpn_base_path_len, head.paths.path1(), head.paths.path2(), rank, *m_worker1, dummy_part,
+          g_size_copied);
+
+    double total_time = lfi_time(&group) - start_time;
+    int64_t total_size_copied = g_size_copied.load();
+    debug_info("Local data moved: " << format_bytes(total_size_copied) << " ("
+                                    << format_bytes(total_size_copied / total_time) << "/s)");
+    CHECK_LFI(
+        lfi_allreduce(&group, &total_size_copied, lfi_op_type_enum::LFI_OP_TYPE_INT64_T, lfi_op_enum::LFI_OP_SUM));
+
+    if (rank == 0) {
+        printf("Flush completed in %.2f ms\n", total_time * 1000.0);
+        print("Total data moved: " << format_bytes(total_size_copied) << " ("
+                                   << format_bytes(total_size_copied / total_time) << "/s)");
+    }
+
+    CHECK_LFI(lfi_group_close(&group));
 
     status.ret = 0;
     comm.write_data((char *)&status, sizeof(struct st_xpn_server_status), rank_client_id, tag_client_id);
@@ -379,228 +300,151 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
     debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [op_flush] << End");
 #endif
 }
-
-int preload_copy([[maybe_unused]] const char *entry, [[maybe_unused]] int is_file,
-                 [[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
-                 [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
-                 [[maybe_unused]] int size) {
-    debug_info("entry " << entry << " is_file " << is_file << " dir_name " << dir_name << " dest_prefix " << dest_prefix
-                        << " blocksize " << blocksize << " replication_level " << replication_level << " rank " << rank
-                        << " size " << size);
 #ifdef ENABLE_FABRIC_SERVER
-    int ret;
 
-    int fd_src, fd_dest;
-    char *buf;
-    int buf_len;
-    off64_t offset_src;
-    off64_t ret_2;
-    off_t local_offset;
-    off_t local_size = 0;
-    int local_server;
-    int i;
-    ssize_t read_size, write_size;
-    struct stat st;
+WorkerResult preload_file_blocks_task(std::unique_ptr<PreloadEntry> entry, xpn_partition &dummy_part,
+                                      int xpn_base_path_len, int rank, int size, std::atomic<int64_t> &g_size_copied) {
+    debug_info(entry->src_path << " " << entry->dest_path << " " << entry->file_size << " "
+                               << format_open_mode(entry->mode) << " " << rank << " " << size << " "
+                               << g_size_copied.load());
 
-    // Alocate buffer
-    buf_len = blocksize;
-    buf = (char *)malloc(blocksize);
-    if (NULL == buf) {
-        print_error("malloc: ");
-        return -1;
+    std::string rel_path = &entry->dest_path[xpn_base_path_len];
+    xpn_file file(rel_path, dummy_part);
+    file.m_mdata.m_data.fill(file.m_mdata);
+    file.m_mdata.m_data.file_size = entry->file_size;
+
+    if (!file.exist_in_serv(rank)) return WorkerResult(0);
+
+    int fd_src = open64(entry->src_path, O_RDONLY | O_LARGEFILE);
+    if (fd_src < 0) return WorkerResult(-1);
+
+    int fd_dest = open64(entry->dest_path, O_CREAT | O_WRONLY | O_TRUNC | O_LARGEFILE, entry->mode);
+    if (fd_dest < 0) {
+        close(fd_src);
+        return WorkerResult(-1);
     }
-
-    // Generate source path
-    strcpy(src_path, entry);
-
-    // Generate destination path
-    const char *aux_entry = entry + strlen(dir_name);
-    sprintf(dest_path, "%s/%s", dest_prefix, aux_entry);
 
     if (rank == 0) {
-        print("preload: " << src_path << " -> " << dest_path);
+        print("Size: " << format_bytes(entry->file_size) << " " << entry->src_path << " -> " << entry->dest_path);
     }
 
-    ret = stat(src_path, &st);
-    if (ret < 0) {
-        print_error("stat: " << src_path);
-        free(buf);
-        return -1;
-    }
-    if (!is_file) {
-        ret = mkdir(dest_path, st.st_mode);
-        if (ret < 0 && errno != EEXIST) {
-            print_error("mkdir: " << dest_path);
-            free(buf);
-            return -1;
-        }
-    } else if (is_file) {
-        fd_src = open64(src_path, O_RDONLY | O_LARGEFILE);
-        if (fd_src < 0) {
-            print_error("open 1: " << src_path);
-            free(buf);
-            return -1;
-        }
+    int64_t bytes_copied_local = 0;
+    int64_t offset_src = 0;
+    int64_t local_offset;
+    int local_server;
 
-        fd_dest = open64(dest_path, O_CREAT | O_WRONLY | O_TRUNC | O_LARGEFILE, st.st_mode);
-        if (fd_dest < 0) {
-            print_error("open 2: " << dest_path);
-            free(buf);
-            return -1;
-        }
+    while (offset_src < static_cast<int64_t>(entry->file_size)) {
+        for (int i = 0; i <= dummy_part.m_replication_level; i++) {
+            file.map_offset_mdata(offset_src, i, local_offset, local_server);
+            if (local_server == rank) {
+                off64_t src_pos = offset_src;
+                off64_t dst_pos = local_offset + xpn_metadata::HEADER_SIZE;
+                int64_t to_copy = std::min(static_cast<int64_t>(dummy_part.m_block_size),
+                                           static_cast<int64_t>(entry->file_size - offset_src));
 
-        // Write header
-        xpn_partition part("xpn", replication_level, blocksize);
-        part.m_data_serv.resize(size);
-        std::string aux_str = &dest_path[xpn_path_len];
-        xpn_file file(aux_str, part);
-        file.m_mdata.m_data.fill(file.m_mdata);
-
-        char header_buf[xpn_metadata::HEADER_SIZE];
-        memset(header_buf, 0, xpn_metadata::HEADER_SIZE);
-        write_size = filesystem::write(fd_dest, header_buf, xpn_metadata::HEADER_SIZE);
-        if (write_size != xpn_metadata::HEADER_SIZE) {
-            print_error("write: ");
-            free(buf);
-            return -1;
-        }
-
-        offset_src = 0;
-        do {
-            for (i = 0; i <= replication_level; i++) {
-                file.map_offset_mdata(offset_src, i, local_offset, local_server);
-
-                if (local_server == rank) {
-                    ret_2 = lseek64(fd_src, offset_src, SEEK_SET);
-                    if (ret_2 < 0) {
-                        print_error("lseek: ");
-                        goto finish_copy;
-                    }
-                    ret_2 = lseek64(fd_dest, local_offset + xpn_metadata::HEADER_SIZE, SEEK_SET);
-                    if (ret_2 < 0) {
-                        print_error("lseek: ");
-                        goto finish_copy;
-                    }
-
-                    read_size = filesystem::read(fd_src, buf, buf_len);
-                    if (read_size <= 0) {
-                        goto finish_copy;
-                    }
-                    write_size = filesystem::write(fd_dest, buf, read_size);
-                    if (write_size != read_size) {
-                        print_error("write: ");
-                        goto finish_copy;
-                    }
-                    local_size += write_size;
+                if (lseek64(fd_dest, dst_pos, SEEK_SET) >= 0) {
+                    ssize_t sent = filesystem::sendfile(fd_dest, fd_src, &src_pos, to_copy);
+                    if (sent > 0) bytes_copied_local += sent;
                 }
             }
-
-            offset_src += blocksize;
-        } while (write_size > 0);
-
-    finish_copy:
-        // Update file size
-        file.m_mdata.m_data.file_size = st.st_size;
-        // Write mdata only when necesary
-        int write_mdata = 0;
-        int master_dir = file.m_mdata.master_dir();
-        int has_master_dir = 0;
-        int aux_serv;
-        for (int i = 0; i < replication_level + 1; i++) {
-            aux_serv = (file.m_mdata.m_data.first_node + i) % size;
-            if (aux_serv == rank) {
-                write_mdata = 1;
-                break;
-            }
         }
-        for (int i = 0; i < replication_level + 1; i++) {
-            aux_serv = (master_dir + i) % size;
-            if (aux_serv == rank) {
-                has_master_dir = 1;
-                break;
-            }
-        }
+        offset_src += (int64_t)dummy_part.m_block_size;
+    }
 
-        if (write_mdata == 1) {
-            ret_2 = lseek64(fd_dest, 0, SEEK_SET);
-            write_size = filesystem::write(fd_dest, &file.m_mdata.m_data, sizeof(file.m_mdata.m_data));
-            if (write_size != sizeof(file.m_mdata.m_data)) {
-                print_error("write: ");
-                free(buf);
-                return -1;
-            }
-            local_size += write_size;
-        }
-
-        close(fd_src);
-        close(fd_dest);
-        if (local_size == 0 && has_master_dir == 0) {
-            unlink(dest_path);
+    // Write metadata if this rank is one of the replica nodes for metadata
+    bool write_mdata = false;
+    for (int i = 0; i <= dummy_part.m_replication_level; i++) {
+        int aux_serv = (file.m_mdata.m_data.first_node + i) % size;
+        if (aux_serv == rank) {
+            write_mdata = true;
+            break;
         }
     }
 
-    free(buf);
-#endif
-    return 0;
+    if (write_mdata) {
+        pwrite64(fd_dest, &file.m_mdata.m_data, sizeof(file.m_mdata.m_data), 0);
+    }
+
+    close(fd_src);
+    close(fd_dest);
+
+    g_size_copied += bytes_copied_local;
+    return WorkerResult(0);
 }
 
-int preload_list([[maybe_unused]] const char *dir_name, [[maybe_unused]] const char *dest_prefix,
-                 [[maybe_unused]] int blocksize, [[maybe_unused]] int replication_level, [[maybe_unused]] int rank,
-                 [[maybe_unused]] int size) {
-    debug_info("BEGIN dir_name " << dir_name << " dest_prefix " << dest_prefix << " blocksize " << blocksize
-                                 << " replication_level " << replication_level << " rank " << rank << " size " << size);
-#ifdef ENABLE_FABRIC_SERVER
-    int ret;
-    DIR *dir = NULL;
-    struct stat stat_buf;
-    char path[PATH_MAX];
+void preload(lfi_group *group, int xpn_base_path_len, const char *src_root, const char *dest_root, int rank, int size,
+             workers &pool, int blocksize, int replication_level, std::atomic<int64_t> &g_size_copied) {
+    debug_info(group << " " << xpn_base_path_len << " " << src_root << " " << dest_root << " " << rank << " " << size
+                     << " " << blocksize << " " << replication_level << " " << g_size_copied.load());
+    auto result_handler = []([[maybe_unused]] const WorkerResult &r) { return true; };
+    auto tasks = FixedTaskQueueFactory<1024>::Create(pool, result_handler);
 
-    dir = opendir(dir_name);
-    if (dir == NULL) {
-        fprintf(stderr, "opendir error %s %s\n", dir_name, strerror(errno));
-        return -1;
+    xpn_partition dummy_part("xpn", replication_level, blocksize);
+    dummy_part.m_data_serv.resize(size);
+
+    if (rank == 0) {
+        std::vector<std::pair<std::string, std::string>> stack;
+        stack.push_back({src_root, dest_root});
+
+        while (!stack.empty()) {
+            auto current = stack.back();
+            stack.pop_back();
+
+            DIR *dir = opendir(current.first.c_str());
+            if (!dir) continue;
+
+            struct dirent *de;
+            struct stat st;
+            while ((de = readdir(dir)) != NULL) {
+                if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+
+                auto entry_ptr = std::make_unique<PreloadEntry>();
+                snprintf(entry_ptr->src_path, PATH_MAX, "%s/%s", current.first.c_str(), de->d_name);
+                snprintf(entry_ptr->dest_path, PATH_MAX, "%s/%s", current.second.c_str(), de->d_name);
+
+                if (stat(entry_ptr->src_path, &st) == 0) {
+                    entry_ptr->mode = st.st_mode;
+                    entry_ptr->file_size = st.st_size;
+                    if (S_ISDIR(st.st_mode)) {
+                        mkdir(entry_ptr->dest_path, entry_ptr->mode);
+                        stack.push_back({entry_ptr->src_path, entry_ptr->dest_path});
+                    } else {
+                        int signal = 1;
+                        CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
+                        CHECK_LFI(lfi_broadcast(group, 0, entry_ptr.get(), sizeof(PreloadEntry)));
+
+                        tasks.launch([entry = std::move(entry_ptr), &dummy_part, xpn_base_path_len, rank, size,
+                                      &g_size_copied]() mutable {
+                            return preload_file_blocks_task(std::move(entry), dummy_part, xpn_base_path_len, rank, size,
+                                                            g_size_copied);
+                        });
+                    }
+                }
+            }
+            closedir(dir);
+        }
+        int signal = 0;
+        CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
+    } else {
+        while (true) {
+            int signal;
+            CHECK_LFI(lfi_broadcast(group, 0, &signal, sizeof(int)));
+            if (signal == 0) break;
+
+            auto entry_ptr = std::make_unique<PreloadEntry>();
+            CHECK_LFI(lfi_broadcast(group, 0, entry_ptr.get(), sizeof(PreloadEntry)));
+
+            tasks.launch(
+                [entry = std::move(entry_ptr), &dummy_part, xpn_base_path_len, rank, size, &g_size_copied]() mutable {
+                    return preload_file_blocks_task(std::move(entry), dummy_part, xpn_base_path_len, rank, size,
+                                                    g_size_copied);
+                });
+        }
     }
 
-    struct dirent *entry;
-    entry = readdir(dir);
-
-    while (entry != NULL) {
-        if (!strcmp(entry->d_name, ".")) {
-            entry = readdir(dir);
-            continue;
-        }
-
-        if (!strcmp(entry->d_name, "..")) {
-            entry = readdir(dir);
-            continue;
-        }
-
-        sprintf(path, "%s/%s", dir_name, entry->d_name);
-
-        ret = stat(path, &stat_buf);
-        if (ret < 0) {
-            print_error("stat: " << path);
-            printf("%s\n", path);
-            entry = readdir(dir);
-            continue;
-        }
-
-        int is_file = !S_ISDIR(stat_buf.st_mode);
-        preload_copy(path, is_file, dir_name, dest_prefix, blocksize, replication_level, rank, size);
-
-        if (S_ISDIR(stat_buf.st_mode)) {
-            char path_dst[PATH_MAX];
-            sprintf(path_dst, "%s/%s", dest_prefix, entry->d_name);
-            preload_list(path, path_dst, blocksize, replication_level, rank, size);
-        }
-
-        entry = readdir(dir);
-    }
-
-    closedir(dir);
-#endif
-    return 0;
+    tasks.wait_remaining();
 }
+#endif
 
 void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_server_flush_preload_ckpt &head,
                             int rank_client_id, int tag_client_id) {
@@ -634,6 +478,7 @@ void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn
         hostnames_c_str.emplace_back(hostname.c_str());
     }
 
+    lfi_group group = {};
     ret = lfi_group_create(hostnames_c_str.data(), hostnames_c_str.size(), &group);
     if (ret < 0) {
         status.ret = ret;
@@ -642,14 +487,28 @@ void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn
     }
 
     int rank, size;
-    lfi_group_rank(&group, &rank);
-    lfi_group_size(&group, &size);
+    CHECK_LFI(lfi_group_rank(&group, &rank));
+    CHECK_LFI(lfi_group_size(&group, &size));
+    double start_time = lfi_time(&group);
 
-    xpn_path_len = strlen(head.paths.path1());
-    preload_list(head.paths.path1(), head.paths.path2(), conf.partitions[0].bsize, conf.partitions[0].replication_level,
-                 rank, size);
+    int xpn_base_path_len = strlen(head.paths.path2());
+    std::atomic<int64_t> g_size_copied{0};
+    preload(&group, xpn_base_path_len, head.paths.path1(), head.paths.path2(), rank, size, *m_worker1,
+            conf.partitions[0].bsize, conf.partitions[0].replication_level, g_size_copied);
+    double total_time = lfi_time(&group) - start_time;
+    int64_t total_size_copied = g_size_copied.load();
+    debug_info("Local data moved: " << format_bytes(total_size_copied) << " ("
+                                    << format_bytes(total_size_copied / total_time) << "/s)");
+    CHECK_LFI(
+        lfi_allreduce(&group, &total_size_copied, lfi_op_type_enum::LFI_OP_TYPE_INT64_T, lfi_op_enum::LFI_OP_SUM));
 
-    lfi_group_close(&group);
+    if (rank == 0) {
+        printf("Preload completed in %.2f ms\n", total_time * 1000.0);
+        print("Total data moved: " << format_bytes(total_size_copied) << " ("
+                                   << format_bytes(total_size_copied / total_time) << "/s)");
+    }
+
+    CHECK_LFI(lfi_group_close(&group));
 
     status.ret = 0;
     status.server_errno = 0;
