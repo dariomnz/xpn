@@ -45,26 +45,23 @@ struct arg_extractor<R (C::*)(Arg)> {
 };
 }  // namespace internal
 
-template <typename T, typename Handler, size_t Capacity = 64>
+template <typename Handler, size_t Capacity = 64, typename T = typename internal::arg_extractor<Handler>::type>
 class FixedTaskQueue {
    private:
-    TaskResult<T> m_storage[Capacity];  // Ring buffer
+    std::array<TaskResult<T>, Capacity> m_storage;  // Ring buffer
 
-    size_t m_head = 0;                  // Where we produce
-    size_t m_tail = 0;                  // Where we consume
-    size_t m_count = 0;                 // The current count of elements
+    std::atomic<int> m_ready = 0;                   // The current count of elements
+    int m_count = 0;                                // The current count of elements
 
-    workers& m_worker;                  // Worker where the task is run
-    Handler m_on_result;                // Function to call when a result is consumed
+    workers& m_worker;                              // Worker where the task is run
+    Handler m_on_result;                            // Function to call when a result is consumed
 
    public:
     FixedTaskQueue(workers& worker, Handler on_result) : m_worker(worker), m_on_result(std::move(on_result)) {}
     ~FixedTaskQueue() {
         // If the queue is destroyed, we MUST wait for all pending tasks.
         // Otherwise, worker threads will write to a destroyed TaskResult.
-        while (m_count > 0) {
-            consume_one();
-        }
+        wait_remaining();
     }
     // Delete copy constructor
     FixedTaskQueue(const FixedTaskQueue&) = delete;
@@ -86,8 +83,17 @@ class FixedTaskQueue {
         }
 
         // 2. Launch the new task
-        auto& slot = get_next_slot();
-        m_worker.launch(std::forward<Func>(task_func), slot);
+        auto& slot = get_free_slot();
+
+        m_worker.launch(
+            [task_func = std::forward<Func>(task_func), this]() mutable {
+                auto result = task_func();
+
+                m_ready.fetch_add(1);
+                m_ready.notify_one();
+                return result;
+            },
+            slot);
         return true;
     }
 
@@ -102,35 +108,39 @@ class FixedTaskQueue {
 
    private:
     // This is called when you want to launch a task
-    TaskResult<T>& get_next_slot() {
-        if (full()) {
-            throw std::runtime_error("The StaticTaskQueue get_next_slot needs to be call making sure it is not full");
+    TaskResult<T>& get_free_slot() {
+        for (auto&& slot : m_storage) {
+            if (!slot.valid()) {
+                m_count++;
+                return slot;
+            }
         }
-
-        TaskResult<T>& slot = m_storage[m_head];
-
-        // Reset the task for the recycled slot
-        slot.reset();
-
-        m_head = (m_head + 1) % Capacity;
-        m_count++;
-
-        return slot;
+        throw std::runtime_error("The StaticTaskQueue get_free_slot needs to be call making sure it is not full");
     }
 
     // This is called to get the result of the oldest task
     T consume_one() {
         // This shouldn't throw if used correctly in a loop
-        if (m_count == 0) throw std::runtime_error("No tasks to consume");
+        if (empty()) throw std::runtime_error("No tasks to consume");
 
-        TaskResult<T>& slot = m_storage[m_tail];
+        while (m_ready.load() == 0) {
+            m_ready.wait(0);
+        }
 
-        T val = slot.get();
+        for (auto&& slot : m_storage) {
+            if (slot.ready()) {
+                T val = slot.get();
+                // Reset the task for the slot to recucle it
+                slot.reset();
+                m_ready.fetch_sub(1);
 
-        m_tail = (m_tail + 1) % Capacity;
-        m_count--;
+                m_count--;
 
-        return val;
+                return val;
+            }
+        }
+
+        throw std::runtime_error("No tasks are ready, this should not happen");
     }
 
     bool full() const { return m_count == Capacity; }
@@ -139,6 +149,11 @@ class FixedTaskQueue {
     size_t count() const { return m_count; }
 };
 
-template <typename Handler>
-FixedTaskQueue(workers&, Handler) -> FixedTaskQueue<typename internal::arg_extractor<Handler>::type, Handler>;
+template <size_t Capacity>
+struct FixedTaskQueueFactory {
+    template <typename H>
+    static auto Create(workers& w, H&& h) {
+        return FixedTaskQueue<std::decay_t<H>, Capacity>(w, std::forward<H>(h));
+    }
+};
 }  // namespace XPN
