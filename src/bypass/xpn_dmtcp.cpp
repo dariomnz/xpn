@@ -200,14 +200,8 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             //     wasDisconnected = true;
             // }
 
-            // debug_info("In XPN::pre_checkpoint");
-            // dmtcp_global_barrier("XPN::pre_checkpoint");
-
-            // auto &instance = XPN::ArenaAllocatorStorage::instance();
             auto &instance = xpn_dmtcp::instance();
             instance.m_inCkpt = true;
-            // Activate a arena for all the operations in ckpt
-            // instance.activate_arena(arena_buffer, ARENA_BUFFER_SIZE);
 
             // auto now = std::chrono::high_resolution_clock::now();
             // std::chrono::duration<double> elapsed_seconds = now - start;
@@ -218,10 +212,8 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
         case DMTCP_EVENT_POSTCHECKPOINT: {
             debug_info("DMTCP_EVENT_POSTCHECKPOINT");
 
-            // auto &instance = XPN::ArenaAllocatorStorage::instance();
             auto &instance = xpn_dmtcp::instance();
             instance.m_inCkpt = false;
-            // instance.desactivate_all_arena();
 
             std::chrono::duration<double> elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
             debug_info("Time taken PRESUSPEND -> PRECHECKPOINT -> POSTCHECKPOINT: "
@@ -266,9 +258,7 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
         case DMTCP_EVENT_RESTART: {
             debug_info("DMTCP_EVENT_RESTART");
             // In case the saved memory have the arena activated and the in_ckpt activated
-            // auto &instance = XPN::ArenaAllocatorStorage::instance();
             auto &instance = xpn_dmtcp::instance();
-            // instance.desactivate_all_arena();
             {
                 std::unique_lock lock(fdstable_mutex);
                 for (auto &&fd : fdstable_ckpt) {
