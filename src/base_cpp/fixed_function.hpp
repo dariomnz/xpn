@@ -23,7 +23,6 @@
 
 #include <cstddef>
 #include <functional>
-#include <iostream>
 #include <type_traits>
 #include <utility>
 
@@ -45,7 +44,7 @@ class FixedFunction<R(Args...), Capacity> {
     struct VTable {
         R (*call)(void*, Args&&...);
         void (*destroy)(void*);
-        void (*copy)(const void*, void*);
+        // void (*copy)(const void*, void*);
         void (*move)(void*, void*);
     };
 
@@ -62,6 +61,21 @@ class FixedFunction<R(Args...), Capacity> {
         }
     }
 
+    template <typename FT>
+    static R vtable_call(void* src, Args&&... args) {
+        return (*static_cast<FT*>(src))(std::forward<Args>(args)...);
+    }
+
+    template <typename FT>
+    static void vtable_destroy(void* src) {
+        static_cast<FT*>(src)->~FT();
+    }
+
+    template <typename FT>
+    static void vtable_move(void* src, void* dest) {
+        new (dest) FT(std::move(*static_cast<FT*>(src)));
+    }
+
    public:
     FixedFunction() = default;
 
@@ -71,17 +85,8 @@ class FixedFunction<R(Args...), Capacity> {
 
         static_assert(CheckSize<sizeof(FunctorType), Capacity>::value,
                       "Lambda capture is too large for FixedFunction. Increase Capacity.");
-        static const VTable vt = {
-            // Call logic
-            [](void* src, Args&&... args) -> R {
-                return (*static_cast<FunctorType*>(src))(std::forward<Args>(args)...);
-            },
-            // Destroy logic
-            [](void* src) { static_cast<FunctorType*>(src)->~FunctorType(); },
-            // Copy logic (Placement New Copy Constructor)
-            [](const void* src, void* dest) { new (dest) FunctorType(*static_cast<const FunctorType*>(src)); },
-            // Move logic (Placement New Move Constructor)
-            [](void* src, void* dest) { new (dest) FunctorType(std::move(*static_cast<FunctorType*>(src))); }};
+
+        static const VTable vt = {vtable_call<FunctorType>, vtable_destroy<FunctorType>, vtable_move<FunctorType>};
 
         vtable = &vt;
         new (storage) FunctorType(std::move(f));
@@ -93,24 +98,10 @@ class FixedFunction<R(Args...), Capacity> {
     }
 
     // Copy Constructor
-    FixedFunction(const FixedFunction& other) {
-        if (other.vtable) {
-            other.vtable->copy(other.ptr(), ptr());
-            vtable = other.vtable;
-        }
-    }
+    FixedFunction(const FixedFunction& other) = delete;
 
     // Copy assigment
-    FixedFunction& operator=(const FixedFunction& other) {
-        if (this != &other) {
-            reset();
-            if (other.vtable) {
-                other.vtable->copy(other.ptr(), ptr());
-                vtable = other.vtable;
-            }
-        }
-        return *this;
-    }
+    FixedFunction& operator=(const FixedFunction& other) = delete;
 
     // Move Constructor
     FixedFunction(FixedFunction&& other) noexcept {
@@ -128,6 +119,7 @@ class FixedFunction<R(Args...), Capacity> {
             if (other.vtable) {
                 other.vtable->move(other.ptr(), ptr());
                 vtable = other.vtable;
+                other.reset();
             }
         }
         return *this;

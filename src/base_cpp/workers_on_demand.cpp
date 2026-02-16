@@ -83,7 +83,7 @@ namespace XPN
 
             m_wait++;
         }
-        std::thread t([this, task] { 
+        std::thread t([this, task = std::move(task)] { 
             task(); 
 
             {
