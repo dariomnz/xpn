@@ -96,6 +96,7 @@ namespace XPN
         XPN_DEBUG_BEGIN;
         uint64_t res = 0;
         res = read(stream->_fileno, ptr, size*nmemb);
+        res = res / size;  // Number of items read
         XPN_DEBUG_END;
         return res;
     }
@@ -105,6 +106,7 @@ namespace XPN
         XPN_DEBUG_BEGIN;
         uint64_t res = 0;
         res = write(stream->_fileno, ptr, size*nmemb);
+        res = res / size;  // Number of items read
         XPN_DEBUG_END;
         return res;
     }
