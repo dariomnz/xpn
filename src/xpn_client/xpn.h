@@ -120,7 +120,6 @@
   ssize_t xpn_writer  (void *cookie, const char *buffer, size_t size);
   int     xpn_seeker  (void *cookie, __off64_t *position, int whence);
   int     xpn_cleaner (void *cookie);
-  void    xpn_rewind  (FILE *stream);
   int     xpn_fflush  (FILE *stream);
   int     xpn_ferror  (FILE *stream);
   int     xpn_fgetc   (FILE *flujo);
@@ -150,7 +149,8 @@
   int         xpn_fseek (FILE *stream, off_t offset, int whence);
 
   // xpn_ftell.c
-  long        xpn_ftell (FILE *stream);
+  long        xpn_ftell  (FILE *stream);
+  void        xpn_rewind (FILE *stream);
 
   // xpn_fileno.c
   int         xpn_fileno (FILE *stream);

@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-#include "debug.hpp"
+#include "base_cpp/debug.hpp"
 
 namespace XPN {
 class subprocess {
@@ -51,10 +51,13 @@ class subprocess {
 
        public:
         process() {}
-        process(const std::string& commandPath, std::vector<std::string> args, bool supress_output = true) {
-            execute(commandPath, args, supress_output);
+        process(const std::string& commandPath, std::vector<std::string> args, bool supress_output = true,
+                bool wait_for_start = false) {
+            execute(commandPath, args, supress_output, wait_for_start);
         }
-        process(const std::string& command, bool supress_output = true) { execute(command, supress_output); }
+        process(const std::string& command, bool supress_output = true, bool wait_for_start = false) {
+            execute(command, supress_output, wait_for_start);
+        }
         ~process() {
             if (wait_on_destroy) wait_status();
         }
@@ -83,7 +86,7 @@ class subprocess {
             return ::kill(pid, signal);
         }
 
-        void execute(const std::string& command, bool supress_output = true) {
+        void execute(const std::string& command, bool supress_output = true, bool wait_for_start = false) {
             std::vector<std::string> args;
             uint64_t start = 0, end = 0;
             while ((end = command.find(' ', start)) != std::string::npos) {
@@ -94,20 +97,19 @@ class subprocess {
 
             std::string commandPath = args[0];
             args.erase(args.begin());
-            return execute(commandPath, args, supress_output);
+            return execute(commandPath, args, supress_output, wait_for_start);
         }
 
-        void execute(const std::string& commandPath, const std::vector<std::string>& args, bool supress_output = true) {
+        void execute(const std::string& commandPath, const std::vector<std::string>& args, bool supress_output = true,
+                     bool wait_for_start = false) {
             pid = 0;
-            std::vector<char*> cargs;
-            // 2, one for the program and the other for the null terminated
-            cargs.reserve(args.size() + 2);
-            cargs.emplace_back(const_cast<char*>(commandPath.c_str()));
-            for (auto& arg : args) {
-                cargs.emplace_back(const_cast<char*>(arg.c_str()));
-            }
-            cargs.push_back(nullptr);
 
+            int pipefd[2];
+            if (wait_for_start) {
+                if (pipe2(pipefd, O_CLOEXEC) == -1) {
+                    wait_for_start = false;
+                }
+            }
             pid = ::fork();
             // child
             if (pid == 0) {
@@ -116,6 +118,14 @@ class subprocess {
                 }
                 // in case the parent dies send SIGTERM
                 ::prctl(PR_SET_PDEATHSIG, SIGTERM);
+
+                std::vector<char*> cargs;
+                cargs.reserve(args.size() + 2);
+                cargs.emplace_back(const_cast<char*>(commandPath.c_str()));
+                for (auto& arg : args) {
+                    cargs.emplace_back(const_cast<char*>(arg.c_str()));
+                }
+                cargs.push_back(nullptr);
 
                 ::execvp(commandPath.c_str(), cargs.data());
 
@@ -127,6 +137,16 @@ class subprocess {
 
                 print_error("execvp(" << str.str() << ")");
                 ::exit(1);
+            } else if (pid > 0) {        // Parent
+                if (wait_for_start) {
+                    ::close(pipefd[1]);  // Close write end in parent
+
+                    char buffer;
+                    while (::read(pipefd[0], &buffer, 1) > 0)
+                        ;
+
+                    ::close(pipefd[0]);
+                }
             }
         }
 

@@ -18,10 +18,11 @@
  *  along with Expand.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-
 #include "xpn_path.hpp"
 
 #include <filesystem>
+
+#include "base_cpp/debug.hpp"
 namespace XPN {
 
 std::string_view xpn_path::get_first_dir(std::string_view path) {
@@ -84,7 +85,8 @@ int xpn_path::hash(std::string_view path, int max_num, bool is_file) {
     for (char ch : name) {
         num += static_cast<int>(ch);
     }
-
-    return max_num > 0 ? num % max_num : num;
+    num = max_num > 0 ? num % max_num : num;
+    debug_info("Hash of: '" << name << "' " << num);
+    return num;
 }
 }  // namespace XPN
