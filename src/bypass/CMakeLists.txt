@@ -14,13 +14,25 @@ target_include_directories(xpn_bypass PRIVATE
 )
 
 install(TARGETS xpn_bypass LIBRARY DESTINATION lib)
+
+
+add_library(bypass_alloc_debug SHARED "bypass_alloc_debug.cpp")
+
+set_target_properties(bypass_alloc_debug PROPERTIES PREFIX "")
+
+target_include_directories(bypass_alloc_debug PRIVATE 
+    "${PROJECT_SOURCE_DIR}/src"
+)
+
+install(TARGETS bypass_alloc_debug LIBRARY DESTINATION lib)
     
 if(DMTCP_PATH)
     message(STATUS "Building DMTCP pluging")
     set(DMTCP_INCLUDE "${DMTCP_PATH}/include")
     set(DMTCP_PLUGIN "xpn_dmtcp")
-    set(LIB_SOURCES "xpn_dmtcp.cpp" "xpn_dmtcp.hpp" "xpn_bypass_dmtcp.cpp")
+    set(LIB_SOURCES "xpn_dmtcp.cpp" "xpn_dmtcp.hpp" "xpn_bypass.cpp")
     add_library(${DMTCP_PLUGIN} SHARED ${LIB_SOURCES})
+    target_compile_definitions(${DMTCP_PLUGIN} PRIVATE BUILD_WITH_DMTCP)
     set_target_properties(${DMTCP_PLUGIN} PROPERTIES PREFIX "")
     target_include_directories(${DMTCP_PLUGIN} PUBLIC 
         "${PROJECT_SOURCE_DIR}/src"
@@ -60,7 +72,7 @@ if(DMTCP_PATH)
         "${DMTCP_PATH}/../mpi-proxy-split/lower-half"
     )
     target_compile_definitions(${DMTCP_PLUGIN} PUBLIC DMTCP) # -DDMTCP
-    target_link_libraries(${DMTCP_PLUGIN} PUBLIC rt dl)
+    target_link_libraries(${DMTCP_PLUGIN} PUBLIC rt xpn_base_cpp dl)
 
     install(TARGETS ${DMTCP_PLUGIN} LIBRARY DESTINATION lib)
 

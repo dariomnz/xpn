@@ -31,21 +31,29 @@
 #include <string>
 #include <thread>
 
-#include "base_cpp/allocator.hpp"
 #include "base_cpp/debug.hpp"
-#include "config.h"
 #include "dmtcp.h"
 #include "xpn.h"
 
+struct scope_disable_ckpt {
+    scope_disable_ckpt() { DMTCP_PLUGIN_DISABLE_CKPT(); }
+    ~scope_disable_ckpt() { DMTCP_PLUGIN_ENABLE_CKPT(); }
+};
+
 class xpn_dmtcp {
    public:
+    static xpn_dmtcp& instance() {
+        static xpn_dmtcp inst;
+        return inst;
+    }
+
     static inline void update_restarts() {
-        auto &instance = XPN::ArenaAllocatorStorage::instance();
+        auto& instan = instance();
         int numCheckpoints = 0;
         int numRestarts = 0;
         dmtcp_get_local_status(&numCheckpoints, &numRestarts);
-        debug_info("savedRestarts " << instance.m_savedRestarts << " numRestarts " << numRestarts);
-        instance.m_savedRestarts = numRestarts;
+        debug_info("savedRestarts " << instan.m_savedRestarts << " numRestarts " << numRestarts);
+        instan.m_savedRestarts = numRestarts;
     }
 
     // static inline bool in_restart() {
@@ -59,4 +67,9 @@ class xpn_dmtcp {
     //                                 << (ret ? "true" : "false"));
     //     return ret;
     // }
+
+   public:
+    bool m_inCkpt = false;
+    bool m_disableAlloc = false;
+    int m_savedRestarts = 0;
 };

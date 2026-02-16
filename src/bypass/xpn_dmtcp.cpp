@@ -161,11 +161,10 @@ int get_rank() {
 }
 
 extern std::recursive_mutex fdstable_mutex;
-extern std::unordered_set<int> fdstable;
+using fdtable_item = std::variant<int, FILE *, DIR *>;
+extern std::unordered_set<fdtable_item> fdstable;
 extern std::unordered_set<int> fdstable_ckpt;
 
-constexpr int ARENA_BUFFER_SIZE = 4 * 1024 * 1024;
-static uint8_t arena_buffer[ARENA_BUFFER_SIZE];
 
 static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t *data) {
     [[maybe_unused]] int res = 0;
@@ -201,13 +200,14 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             //     wasDisconnected = true;
             // }
 
-            debug_info("In XPN::pre_checkpoint");
-            dmtcp_global_barrier("XPN::pre_checkpoint");
+            // debug_info("In XPN::pre_checkpoint");
+            // dmtcp_global_barrier("XPN::pre_checkpoint");
 
-            auto &instance = XPN::ArenaAllocatorStorage::instance();
+            // auto &instance = XPN::ArenaAllocatorStorage::instance();
+            auto &instance = xpn_dmtcp::instance();
             instance.m_inCkpt = true;
             // Activate a arena for all the operations in ckpt
-            instance.activate_arena(arena_buffer, ARENA_BUFFER_SIZE);
+            // instance.activate_arena(arena_buffer, ARENA_BUFFER_SIZE);
 
             // auto now = std::chrono::high_resolution_clock::now();
             // std::chrono::duration<double> elapsed_seconds = now - start;
@@ -218,9 +218,10 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
         case DMTCP_EVENT_POSTCHECKPOINT: {
             debug_info("DMTCP_EVENT_POSTCHECKPOINT");
 
-            auto &instance = XPN::ArenaAllocatorStorage::instance();
+            // auto &instance = XPN::ArenaAllocatorStorage::instance();
+            auto &instance = xpn_dmtcp::instance();
             instance.m_inCkpt = false;
-            instance.desactivate_all_arena();
+            // instance.desactivate_all_arena();
 
             std::chrono::duration<double> elapsed_seconds = std::chrono::high_resolution_clock::now() - start;
             debug_info("Time taken PRESUSPEND -> PRECHECKPOINT -> POSTCHECKPOINT: "
@@ -241,7 +242,7 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             // }
 
             debug_info("In XPN::post_checkpoint");
-            dmtcp_local_barrier("XPN::post_checkpoint");
+            dmtcp_global_barrier("XPN::post_checkpoint");
             // debug_info("After XPN::post_checkpoint");
             
             xpn_dmtcp::update_restarts();
@@ -265,8 +266,9 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
         case DMTCP_EVENT_RESTART: {
             debug_info("DMTCP_EVENT_RESTART");
             // In case the saved memory have the arena activated and the in_ckpt activated
-            auto &instance = XPN::ArenaAllocatorStorage::instance();
-            instance.desactivate_all_arena();
+            // auto &instance = XPN::ArenaAllocatorStorage::instance();
+            auto &instance = xpn_dmtcp::instance();
+            // instance.desactivate_all_arena();
             {
                 std::unique_lock lock(fdstable_mutex);
                 for (auto &&fd : fdstable_ckpt) {
@@ -288,8 +290,8 @@ static void xpn_event_hook(DmtcpEvent_t event, [[maybe_unused]] DmtcpEventData_t
             // }
             // }
 
-            debug_info("In XPN::preload_barrier");
-            dmtcp_global_barrier("XPN::preload_barrier");
+            // debug_info("In XPN::preload_barrier");
+            // dmtcp_global_barrier("XPN::preload_barrier");
             debug_info("DMTCP_EVENT_RESTART end = " << res);
         } break;
 
