@@ -121,6 +121,8 @@ class setup {
     }
 
     [[maybe_unused]] static Defer start_srvs(const XPN::xpn_conf::partition& part) {
+        XPN_PROFILE_BEGIN_SESSION("Setup servers");
+        XPN_PROFILE_FUNCTION();
         std::vector<XPN::subprocess::process> server_processes;
 
         for (auto&& srv_url : part.server_urls) {
@@ -150,11 +152,14 @@ class setup {
                 srv_commmand += " --port ";
                 srv_commmand += url.port;
             }
-            XPN::subprocess::process srv_process(srv_commmand, false);
-            srv_process.set_wait_on_destroy(false);
-            server_processes.emplace_back(srv_process);
+            {
+                XPN_PROFILE_SCOPE(std::string("start server ") + std::string(url.server));
+                XPN::subprocess::process srv_process(srv_commmand, false, false);
+                srv_process.set_wait_on_destroy(false);
+                server_processes.emplace_back(srv_process);
+            }
         }
-
+        XPN_PROFILE_END_SESSION();
         return Defer([processes = std::move(server_processes)]() mutable {
             for (auto&& srv_p : processes) {
                 debug_info("Defer kill server is_running" << (srv_p.is_running() ? " true" : " false"));
@@ -176,6 +181,62 @@ class setup {
         for (size_t i = 0; i < length; ++i) {
             result += characters[distribution(generator)];
         }
+        return result;
+    }
+
+    static std::string generate_Lorem_Ipsum(size_t targetBytes) {
+        if (targetBytes == 0) return "";
+        const std::vector<std::string> vocabulary = {
+            "lorem",       "ipsum",     "dolor",     "sit",        "amet",        "consectetur",  "adipiscing",
+            "elit",        "sed",       "do",        "eiusmod",    "tempor",      "incididunt",   "ut",
+            "labore",      "et",        "dolore",    "magna",      "aliqua",      "ut",           "enim",
+            "ad",          "minim",     "veniam",    "quis",       "nostrud",     "exercitation", "ullamco",
+            "laboris",     "nisi",      "ut",        "aliquip",    "ex",          "ea",           "commodo",
+            "consequat",   "duis",      "aute",      "irure",      "dolor",       "in",           "reprehenderit",
+            "in",          "voluptate", "velit",     "esse",       "cillum",      "dolore",       "eu",
+            "fugiat",      "nulla",     "pariatur",  "excepteur",  "sint",        "occaecat",     "cupidatat",
+            "non",         "proident",  "sunt",      "in",         "culpa",       "qui",          "officia",
+            "deserunt",    "mollit",    "anim",      "id",         "est",         "laborum",      "at",
+            "vero",        "eos",       "et",        "accusamus",  "et",          "iusto",        "odio",
+            "dignissimos", "ducimus",   "qui",       "blanditiis", "praesentium", "voluptatum",   "deleniti",
+            "atque",       "corrupti",  "quos",      "dolores",    "et",          "quas",         "molestias",
+            "excepturi",   "sint",      "occaecati", "cupiditate", "non",         "provident",    "similique",
+            "sunt",        "in",        "culpa",     "qui",        "officia",     "deserunt",     "mollitia",
+            "animi",       "id",        "est",       "laborum",    "et",          "dolorum",      "fuga",
+            "harum",       "quidem",    "rerum",     "facilis",    "est",         "et",           "expedita",
+            "distinctio",  "nam",       "libero",    "tempore",    "cum",         "soluta",       "nobis",
+            "est",         "eligendi",  "optio",     "cumque",     "nihil",       "impedit",      "quo",
+            "minus",       "id",        "quod",      "maxime",     "placeat",     "facere",       "possimus",
+            "omnis",       "voluptas",  "assumenda", "est",        "omnis",       "dolor",        "repellendus"};
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, vocabulary.size() - 1);
+
+        std::string result;
+        result.reserve(targetBytes);
+
+        while (result.size() < targetBytes) {
+            std::string word = vocabulary[dis(gen)];
+
+            if (!result.empty() && result.size() < targetBytes) {
+                result += " ";
+            }
+
+            size_t remaining = targetBytes - result.size();
+
+            if (word.size() <= remaining) {
+                result += word;
+            } else {
+                result += word.substr(0, remaining);
+            }
+        }
+
+        if (!result.empty()) {
+            result[0] = std::toupper(result[0]);
+            result[result.size() - 1] = '.';
+        }
+
         return result;
     }
 };

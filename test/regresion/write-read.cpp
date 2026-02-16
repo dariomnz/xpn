@@ -16,7 +16,8 @@ void run_test(int thread = 0) {
     const std::string filename = "/xpn/mega_data_test" + std::to_string(thread) + ".bin";
     const std::string filename_rename = "/xpn/mega_data_test_rename" + std::to_string(thread) + ".bin";
     size_t total_bytes = data_size_mb * 1024 * 1024;
-    std::string original_data = setup::generate_random_string(total_bytes);
+    // std::string original_data = setup::generate_random_string(total_bytes);
+    std::string original_data = setup::generate_Lorem_Ipsum(total_bytes);
     std::cout << "Generated data of " << data_size_mb << " MB." << std::endl;
 
     LogTimer open_write_close_timer("open write close");
