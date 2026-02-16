@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <cstdint>
 
 #include "base_cpp/filesystem.hpp"
 #include "xpn/xpn_metadata.hpp"
@@ -175,6 +176,8 @@ struct st_xpn_server_close {
 struct st_xpn_server_rw {
     int64_t offset;
     uint64_t size;
+    uint64_t uncompressed_size;
+    uint64_t compressed_size;
     int fd;
     char xpn_session;
     // uint64_t new_file_size;
@@ -185,6 +188,9 @@ struct st_xpn_server_rw {
 
 struct st_xpn_server_rw_req {
     int64_t size;
+    uint64_t uncompressed_size;
+    uint64_t compressed_size;
+    uint64_t ellapsed_time_ns;
     struct st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
@@ -342,6 +348,8 @@ struct st_xpn_server_write_mdata {
 
 struct st_xpn_server_write_mdata_file_size {
     uint64_t size;
+    char xpn_session;
+    int fd;
     xpn_server_path path;
 
     uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, path) + path.get_size(); }

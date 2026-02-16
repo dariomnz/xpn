@@ -510,7 +510,7 @@ int nfi_local::nfi_read_mdata (std::string_view path, xpn_metadata &mdata)
   return ret;
 }
 
-int nfi_local::nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size)
+int nfi_local::nfi_write_mdata (std::string_view path, const xpn_fh &fh, const xpn_metadata::data &mdata, bool only_file_size)
 {
   int ret, fd;
 
@@ -554,10 +554,13 @@ int nfi_local::nfi_write_mdata (std::string_view path, const xpn_metadata::data 
       msg.path.path[length] = '\0';
       msg.path.size = length + 1;
       msg.size = mdata.file_size;
+      msg.fd = fh.as_file().fd;
+      msg.xpn_session = xpn_env::get_instance().xpn_session_file;
       ret = nfi_write_operation(xpn_server_ops::WRITE_MDATA_FILE_SIZE, msg, false);
     }
   }else{
-    fd = PROXY(open)(srv_path.c_str(), O_WRONLY | O_CREAT, S_IRWXU);
+    // Mode like a fopen call
+    fd = PROXY(open)(srv_path.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     if (fd < 0){
       if (errno == EISDIR){
         // if is directory there are no metadata to write so return 0

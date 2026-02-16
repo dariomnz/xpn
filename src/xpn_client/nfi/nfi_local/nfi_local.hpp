@@ -53,7 +53,7 @@ namespace XPN
         int nfi_rmdir       (std::string_view path, bool is_async) override;
         int nfi_statvfs     (std::string_view path, struct ::statvfs &inf) override;
         int nfi_read_mdata  (std::string_view path, xpn_metadata &mdata) override;
-        int nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size) override;
+        int nfi_write_mdata (std::string_view path, const xpn_fh &fh, const xpn_metadata::data &mdata, bool only_file_size) override;
         int nfi_flush       (const char *path) override;
         int nfi_preload     (const char *path) override;
         int nfi_checkpoint  (const char *path) override;

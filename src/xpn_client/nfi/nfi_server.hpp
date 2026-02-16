@@ -88,7 +88,7 @@ namespace XPN
         virtual int nfi_rmdir       (std::string_view path, bool is_async) = 0;
         virtual int nfi_statvfs     (std::string_view path, struct ::statvfs &inf) = 0;
         virtual int nfi_read_mdata  (std::string_view path, xpn_metadata &mdata) = 0;
-        virtual int nfi_write_mdata (std::string_view path, const xpn_metadata::data &mdata, bool only_file_size) = 0;
+        virtual int nfi_write_mdata (std::string_view path, const xpn_fh &fh, const xpn_metadata::data &mdata, bool only_file_size) = 0;
 
         virtual int nfi_flush       (const char *path) = 0;
         virtual int nfi_preload     (const char *path) = 0;
@@ -123,7 +123,7 @@ namespace XPN
             }
             ret = m_comm->write_operation(message);
             if (ret < 0){
-                printf("[NFI_XPN] [nfi_write_operation] ERROR: nfi_write_operation fails");
+                printf("[NFI_XPN] [nfi_write_operation] ERROR: nfi_write_operation fails\n");
                 return -1;
             }
             if (!haveResponse && !xpn_env::get_instance().xpn_connect) {

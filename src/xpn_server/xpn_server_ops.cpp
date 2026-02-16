@@ -19,11 +19,14 @@
  *
  */
 
+#include "base_cpp/debug.hpp"
 #include "xpn_server.hpp"
 #include "base_cpp/timer.hpp"
+#include "lz4.h"
 #include <stddef.h>
 #include <fcntl.h>
 
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -173,20 +176,13 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
 {
   XPN_PROFILE_FUNCTION();
   struct st_xpn_server_rw_req req;
-  long   size, diff, to_read, cont;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")");
 
-  // initialize counters
-  cont = 0;
-  size = head.size;
-  if (size > MAX_BUFFER_SIZE) {
-    size = MAX_BUFFER_SIZE;
-  }
-  diff = head.size - cont;
+  auto start_time = std::chrono::high_resolution_clock::now();
 
-  std::vector<char> buffer(size);
+  std::vector<char> buffer(head.size);
 
   //Open file
   int fd;
@@ -205,57 +201,59 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
     goto cleanup_xpn_server_op_read;
   }
 
-  // loop...
-  do
+  // read data...
   {
-    if (diff > size) {
-      to_read = size;
-    }
-    else {
-      to_read = diff;
-    }
+    std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, buffer.size())); } 
+    req.size = m_filesystem->pread(fd, buffer.data(), buffer.size(), head.offset);
+  }
+  // if error then send as "how many bytes" -1
+  if (req.size < 0 || req.status.ret == -1)
+  {
+    req.size = -1;
+    req.status.ret = -1;
+    req.status.server_errno = errno;
+    comm.write_data((char *)&req,sizeof(struct st_xpn_server_rw_req), rank_client_id, tag_client_id);
+    goto cleanup_xpn_server_op_read;
+  }
 
-    // read data...
-    {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, to_read)); } 
-      req.size = m_filesystem->pread(fd, buffer.data(), to_read, head.offset + cont);
-    }
-    // if error then send as "how many bytes" -1
-    if (req.size < 0 || req.status.ret == -1)
-    {
-      req.size = -1;
-      req.status.ret = -1;
-      req.status.server_errno = errno;
-      comm.write_data((char *)&req,sizeof(struct st_xpn_server_rw_req), rank_client_id, tag_client_id);
-      goto cleanup_xpn_server_op_read;
-    }
-    // send (how many + data) to client...
+  if (head.compressed_size == 1) {
+    std::vector<char> compressed_data(LZ4_COMPRESSBOUND(req.size));
+    req.compressed_size = LZ4_compress_fast(buffer.data(), compressed_data.data(), buffer.size(), compressed_data.size(), 10);
+    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] compress read "<<format_bytes(req.compressed_size)<<"/"<< format_bytes(buffer.size()));
+    req.uncompressed_size = req.size;
     req.status.ret = 0;
     req.status.server_errno = errno;
+    req.ellapsed_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
     comm.write_data((char *)&req, sizeof(struct st_xpn_server_rw_req), rank_client_id, tag_client_id);
     debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
-
-    // send data to client...
-    if (req.size > 0)
     {
-      {
-        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-        if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, to_read)); } 
-        comm.write_data(buffer.data(), req.size, rank_client_id, tag_client_id);
-      }
-      debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send data");
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size)); } 
+      comm.write_data(compressed_data.data(), req.compressed_size, rank_client_id, tag_client_id);
     }
-    cont = cont + req.size; //Send bytes
-    diff = head.size - cont;
+  } else {
+    req.compressed_size = 0;
+    req.uncompressed_size = req.size;
+    req.status.ret = 0;
+    req.status.server_errno = errno;
+    req.ellapsed_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+    comm.write_data((char *)&req, sizeof(struct st_xpn_server_rw_req), rank_client_id, tag_client_id);
+    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
+    {
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.size)); } 
+      comm.write_data(buffer.data(), req.size, rank_client_id, tag_client_id);
+    }
+  }
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send data");
 
-  } while ((diff > 0) && (req.size != 0));
 cleanup_xpn_server_op_read:
   if (head.xpn_session == 0){
     m_filesystem->close(fd);
   }
 
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< cont);
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] << End");
 }
 
@@ -263,74 +261,69 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
 {
   XPN_PROFILE_FUNCTION();
   struct st_xpn_server_rw_req req;
-  int    size, diff, cont, to_write;
+  int decompressed_size;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] write("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")");
 
-  // initialize counters
-  cont = 0;
-  size = (head.size);
-  if (size > MAX_BUFFER_SIZE) {
-    size = MAX_BUFFER_SIZE;
-  }
-  diff = head.size - cont;
+  std::vector<char> compressed_buffer(head.compressed_size);
+  std::vector<char> uncompressed_buffer(head.uncompressed_size);
+  
+  decltype(std::chrono::high_resolution_clock::now()) start_time;
 
-  std::vector<char> buffer(size);
+  // read data from MPI and write into the file
+  {
+    std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_net, head.compressed_size)); } 
+    if (head.compressed_size > 0) {
+      comm.read_data(compressed_buffer.data(), head.compressed_size, rank_client_id, tag_client_id);
+    } else {
+      comm.read_data(uncompressed_buffer.data(), head.uncompressed_size, rank_client_id, tag_client_id);
+    }
+  }
 
   //Open file
   int fd;
-  if (head.xpn_session == 1){
+  if (head.xpn_session == 1) {
     fd = head.fd;
   }else{
     fd = m_filesystem->open(head.path.path, O_WRONLY);
   }
-  if (fd < 0)
-  {
+
+  if (fd < 0) {
     req.size = -1;
     req.status.ret = -1;
     debug_error("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] Error open "<<head.path.path<<" "<<strerror(errno));
     goto cleanup_xpn_server_op_write;
   }
 
-  // loop...
-  do
-  {
-    if (diff > size){
-      to_write = size;
-    }
-    else{
-      to_write = diff;
-    }
-
-    // read data from MPI and write into the file
-    {
+  start_time = std::chrono::high_resolution_clock::now();
+  
+  if (head.compressed_size > 0) {
+    decompressed_size = LZ4_decompress_safe(compressed_buffer.data(), uncompressed_buffer.data(), compressed_buffer.size(), uncompressed_buffer.size());
+    if (decompressed_size >= 0) {
       std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_net, to_write)); } 
-      comm.read_data(buffer.data(), to_write, rank_client_id, tag_client_id);
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer.size())); } 
+      req.size = m_filesystem->pwrite(fd, uncompressed_buffer.data(), uncompressed_buffer.size(), head.offset);
+    } else {
+      req.size = decompressed_size;
     }
-    {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, to_write)); } 
-      req.size = m_filesystem->pwrite(fd, buffer.data(), to_write, head.offset + cont);
-    }
-    if (req.size < 0)
-    {
-      req.status.ret = -1;
-      goto cleanup_xpn_server_op_write;
-    }
+  } else {
+    std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer.size())); } 
+    req.size = m_filesystem->pwrite(fd, uncompressed_buffer.data(), uncompressed_buffer.size(), head.offset);
+  }
+  // print("write "<<(head.compressed_size > 0 ? head.compressed_size:head.uncompressed_size)<<"/"<<req.size<<" ellapsed recv "<<ellapsed_recv<<" decompress "<<ellapsed_decompress<<" write "<<ellapsed_write);
+  if (req.size < 0) {
+    req.status.ret = -1;
+    goto cleanup_xpn_server_op_write;
+  }
 
-    // update counters
-    cont = cont + req.size; // Received bytes
-    diff = head.size - cont;
-
-  } while ((diff > 0) && (req.size != 0));
-
-  req.size = cont;
   req.status.ret = 0;
 cleanup_xpn_server_op_write:
   // write to the client the status of the write operation
   req.status.server_errno = errno;
+  req.ellapsed_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
   comm.write_data((char *)&req,sizeof(struct st_xpn_server_rw_req), rank_client_id, tag_client_id);
 
   if (head.xpn_session == 1){
@@ -339,7 +332,7 @@ cleanup_xpn_server_op_write:
     m_filesystem->close(fd);
   }
 
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] write("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< cont);
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] write("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] << End");
 }
 
@@ -657,8 +650,8 @@ void xpn_server::op_write_mdata ( xpn_server_comm &comm, const st_xpn_server_wri
 
   file_map_md_fq_item& item = get_mdata_queue(head.path.path);
   std::unique_lock lock(item.m_writing_mutex);
-
-  fd = m_filesystem->open(head.path.path, O_WRONLY | O_CREAT, S_IRWXU);
+  // Mode like a fopen call
+  fd = m_filesystem->open(head.path.path, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   if (fd < 0){
     if (errno == EISDIR){
       // if is directory there are no metadata to write so return 0
@@ -742,7 +735,7 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] write_mdata_file_size("<<head.path.path<<", "<<head.size<<")");
   
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] mutex lock");
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] xpn_session "<<(int)head.xpn_session<<" fd "<<head.fd);
 
   file_map_md_fq_item& item = get_mdata_queue(head.path.path);
 
@@ -764,7 +757,11 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
         lock.unlock();
         {
           std::unique_lock wlock(item.m_writing_mutex);
-          fd = m_filesystem->open(head.path.path, O_RDWR);
+          if (head.xpn_session == 1 && head.fd >= 0){
+            fd = head.fd;
+          } else {
+            fd = m_filesystem->open(head.path.path, O_RDWR);
+          }
           if (fd < 0){
             if (errno == EISDIR){
               // if is directory there are no metadata to write so return 0
@@ -780,7 +777,11 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
             ret = m_filesystem->pwrite(fd, &best_file_size, sizeof(int64_t), offsetof(xpn_metadata::data, file_size));
           }
           
-          m_filesystem->close(fd); //TODO: think if necesary check error in close
+          if (head.xpn_session == 1 && head.fd >= 0){
+            m_filesystem->fsync(fd);
+          }else{
+            m_filesystem->close(fd);
+          }
         }
         lock.lock();
         item.m_writing.store(false);
@@ -792,8 +793,7 @@ void xpn_server::op_write_mdata_file_size ( [[maybe_unused]] xpn_server_comm &co
 
   release_mdata_queue(head.path.path, item);
 
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] mutex unlock");
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] write_mdata_file_size("<<head.path.path<<", "<<head.size<<")="<< ret);
+  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] write_mdata_file_size("<<head.path.path<<", "<<head.size<<", "<<head.fd<<")="<< ret);
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata_file_size] << End");
 }
 

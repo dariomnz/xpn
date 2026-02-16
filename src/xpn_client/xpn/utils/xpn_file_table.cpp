@@ -24,6 +24,11 @@
 #include "xpn/xpn_api.hpp"
 
 namespace XPN {
+xpn_file_table::xpn_file_table() {
+    m_files.reserve(100);
+    m_free_keys.reserve(100);
+}
+
 xpn_file_table::~xpn_file_table() {
     std::vector<int> keys;
     std::unique_lock lock(m_mutex);

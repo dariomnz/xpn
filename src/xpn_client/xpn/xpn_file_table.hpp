@@ -34,7 +34,7 @@ namespace XPN
     class xpn_file_table
     {
     public:
-        xpn_file_table() = default;
+        xpn_file_table();
         ~xpn_file_table();
         // Delete copy constructor
         xpn_file_table(const xpn_file_table&) = delete;
@@ -77,7 +77,7 @@ namespace XPN
         std::recursive_mutex m_mutex = {};
 
     private:
-        GrowFixedVector<int, 256> m_free_keys;
+        std::vector<int> m_free_keys;
         void add_free_key(int key);
         // It needs to have keys, previous checked with !m_free_keys.empty()
         int get_free_key();

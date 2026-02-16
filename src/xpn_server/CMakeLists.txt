@@ -11,7 +11,7 @@ file(GLOB XPN_SERVER_SOURCE
 
 add_executable(xpn_server ${XPN_SERVER_HEADERS} ${XPN_SERVER_SOURCE})
 
-target_link_libraries(xpn_server PRIVATE xpn)
+target_link_libraries(xpn_server PRIVATE xpn lz4)
 
 target_include_directories(xpn_server PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
