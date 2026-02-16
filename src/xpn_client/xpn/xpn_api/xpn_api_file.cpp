@@ -76,8 +76,21 @@ namespace XPN
 
             if(!file->m_mdata.m_data.is_valid()){
                 file->m_mdata.m_data.fill(file->m_mdata);
+            }else{
+                if ((O_TRUNC == (flags & O_TRUNC))) {
+                    // Remove all files to trucate and recreate
+                    res = unlink(path);
+                    if (res < 0) {
+                        XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
+                        return -1;
+                    }
+                    flags |= O_CREAT;
+                    // Fill because file not exist here
+                    file->m_mdata.m_data.fill(file->m_mdata);
+                }
             }
         }
+
 
         if ((O_CREAT == (flags & O_CREAT))) {
             auto result_handler = [&](const WorkerResult& r) {
