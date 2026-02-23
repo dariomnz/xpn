@@ -22,6 +22,7 @@
 #include "xpn/xpn_partition.hpp"
 #include "base_cpp/ns.hpp"
 #include "base_cpp/debug.hpp"
+#include "nfi/nfi_server.hpp"
 
 namespace XPN
 {
@@ -43,7 +44,7 @@ namespace XPN
             }
 
             debug_info("server->m_protocol "<<server->m_protocol);
-            if (server->m_protocol != "file") {
+            if (server->m_protocol_type != nfi_server::protocol_t::file) {
                 res = server->init_comm();
             }
 

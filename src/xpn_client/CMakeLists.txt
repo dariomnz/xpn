@@ -20,10 +20,12 @@ target_link_libraries(xpn_static PRIVATE xpn_base_cpp xpn_core xpn_nfi)
 target_include_directories(xpn PUBLIC
 	"${PROJECT_SOURCE_DIR}/src"
 	"${PROJECT_SOURCE_DIR}/src/xpn_client"
+	"${PROJECT_SOURCE_DIR}/libs/lz4"
 )
 target_include_directories(xpn_static PUBLIC
 	"${PROJECT_SOURCE_DIR}/src"
 	"${PROJECT_SOURCE_DIR}/src/xpn_client"
+	"${PROJECT_SOURCE_DIR}/libs/lz4"
 )
 
 install(TARGETS xpn LIBRARY DESTINATION lib)

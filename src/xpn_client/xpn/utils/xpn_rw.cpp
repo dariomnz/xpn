@@ -136,23 +136,6 @@ xpn_rw_operation xpn_rw_calculator::next_read() {
     return ret;
 }
 
-// Calculate the read operation, with only one operation for each block for any replication level
-uint64_t xpn_rw_calculator::max_ops_read() {
-    // Avoid division by zero or size is 0
-    if (m_file.m_part.m_block_size == 0 || m_size == 0) {
-        return 0;
-    }
-
-    // Ceiling Division Formula: (a + b - 1) / b
-    return (m_size + (m_file.m_part.m_block_size - 1)) / m_file.m_part.m_block_size;
-}
-
-// Calculate the write operations taking into account the replication level
-uint64_t xpn_rw_calculator::max_ops_write() {
-    // The maximun is the blocks in that size in case there are remaining and multiplied by the replication level
-    return max_ops_read() * (m_file.m_part.m_replication_level + 1);
-}
-
 /**
  * Calculates the server and the offset (in server) for reads of the given offset (origin file) of a file with
  * replication.

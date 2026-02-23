@@ -86,14 +86,11 @@ namespace XPN
     void workers_pool::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result)
     {
         {
-            std::unique_lock<std::mutex> lock(m_full_mutex);
-            
+            std::unique_lock<std::mutex> lock(m_queue_mutex);
             m_full_cv.wait(lock, [this] { 
                 return m_tasks.size() <= m_num_threads; 
             }); 
-        }
-        {
-            std::unique_lock<std::mutex> lock(m_queue_mutex);
+            
             result.init();
             auto wrapper = [task = std::move(task), &result]() mutable {
                 result.set_value(task());
@@ -111,15 +108,11 @@ namespace XPN
     void workers_pool::launch_no_future(FixedFunction<void()> task)
     {
         {
-            std::unique_lock<std::mutex> lock(m_full_mutex);
-            
+            std::unique_lock<std::mutex> lock(m_queue_mutex);
             m_full_cv.wait(lock, [this] { 
                 return m_tasks.size() <= m_num_threads; 
             }); 
-        }
-        {
-            std::unique_lock<std::mutex> lock(m_queue_mutex);
-            
+
             m_tasks.emplace(std::move(task)); 
         }
         {

@@ -53,6 +53,15 @@ namespace XPN
         
         static std::unique_ptr<nfi_server> Create(std::string_view url);
     public:
+        enum class protocol_t {
+            None,
+            file,
+            mpi,
+            fabric,
+            sck,
+            mqtt
+        };
+        protocol_t m_protocol_type;
         std::string_view m_protocol; // protocol of the server: mpi_server sck_server
         std::string_view m_server;   // server address
         int m_server_port;      // server port

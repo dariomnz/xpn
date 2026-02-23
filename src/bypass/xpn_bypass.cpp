@@ -124,18 +124,12 @@ inline const char *skip_xpn_prefix(const char *path) {
  */
 std::recursive_mutex fdstable_mutex;
 using fdtable_item = std::variant<int, FILE *, DIR *>;
-template <class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
 std::unordered_set<fdtable_item> fdstable;
 std::unordered_set<int> fdstable_ckpt;
 
 bool fdstable_get(int fd) {
     if (fd < 0) return false;
+    std::unique_lock lock(fdstable_mutex);
     // debug_info_fmt("[BYPASS] Begin fdstable_get(%d)", fd);
     bool ret = fdstable.find(fd) != fdstable.end();
     // debug_info_fmt("[BYPASS] End fdstable_get(%d) = %d", fd, ret);
@@ -144,6 +138,7 @@ bool fdstable_get(int fd) {
 
 bool fdstable_get(FILE *file) {
     if (file == nullptr) return false;
+    std::unique_lock lock(fdstable_mutex);
     // debug_info_fmt("[BYPASS] Begin fdstable_get(%d)", fd);
     bool ret = fdstable.find(file) != fdstable.end();
     // debug_info_fmt("[BYPASS] End fdstable_get(%d) = %d", fd, ret);
@@ -152,6 +147,7 @@ bool fdstable_get(FILE *file) {
 
 bool fdstable_get(DIR *dir) {
     if (dir == nullptr) return false;
+    std::unique_lock lock(fdstable_mutex);
     // debug_info_fmt("[BYPASS] Begin fdstable_get(%d)", fd);
     bool ret = fdstable.find(dir) != fdstable.end();
     // debug_info_fmt("[BYPASS] End fdstable_get(%d) = %d", fd, ret);
@@ -205,6 +201,7 @@ FILE *fdstable_put(FILE *file) {
 
 DIR *fdstable_put(DIR *dir) {
     if (dir == nullptr) return dir;
+    std::unique_lock lock(fdstable_mutex);
     return fdstable.emplace(dir).second ? dir : nullptr;
 }
 

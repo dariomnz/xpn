@@ -66,7 +66,9 @@ class xpn_env {
         xpn_stats_dir = std::getenv("XPN_STATS_DIR");
         xpn_profiler_file = std::getenv("XPN_PROFILER_FILE");
         parse_env("XPN_MQTT_QOS", xpn_mqtt_qos);
+        // 0 disable, 1 adaptative, 2 always active
         parse_env("XPN_COMPRESSION", xpn_compression);
+        parse_env("XPN_RW_V2", xpn_rw_v2);
     }
     // Delete copy constructor
     xpn_env(const xpn_env&) = delete;
@@ -93,6 +95,7 @@ class xpn_env {
     const char* xpn_profiler_file = nullptr;
     int xpn_mqtt_qos = 0;
     int xpn_compression = 0;
+    int xpn_rw_v2 = 0;
 
    public:
     static xpn_env& get_instance() {

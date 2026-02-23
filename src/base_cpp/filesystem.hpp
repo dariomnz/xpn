@@ -50,7 +50,7 @@ class filesystem {
             remaining -= r;
         }
 
-        debug_info(">> End Sendfile = " << total_sent);
+        debug_info(">> End Sendfile = " << total_sent << print_errno(total_sent));
         return total_sent;
     }
 
@@ -74,7 +74,7 @@ class filesystem {
 
         } while ((l > 0) && (r >= 0));
 
-        debug_info(">> End = " << ret);
+        debug_info(">> End = " << ret << print_errno(ret));
         return ret;
     }
 
@@ -100,7 +100,7 @@ class filesystem {
 
         } while ((l > 0) && (r >= 0));
 
-        debug_info(">> End pwrite(" << fd << ", " << len << ", " << offset << ") = " << ret);
+        debug_info(">> End pwrite(" << fd << ", " << len << ", " << offset << ") = " << ret << print_errno(ret));
         return ret;
     }
 
@@ -124,7 +124,7 @@ class filesystem {
 
         } while ((l > 0) && (r >= 0));
 
-        debug_info(">> End = " << ret);
+        debug_info(">> End = " << ret << print_errno(ret));
         return ret;
     }
 
@@ -150,7 +150,7 @@ class filesystem {
 
         } while ((l > 0) && (r >= 0));
 
-        debug_info(">> End  pread(" << fd << ", " << len << ", " << offset << ")= " << ret);
+        debug_info(">> End  pread(" << fd << ", " << len << ", " << offset << ")= " << ret << print_errno(ret));
         return ret;
     }
 };

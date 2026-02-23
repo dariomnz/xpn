@@ -183,7 +183,7 @@ namespace XPN
             };
             FixedTaskQueue tasks(*m_worker, result_handler);
             for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
-                if (file->m_data_vfh[i].is_file() && file->m_data_vfh[i].as_file().fd != -1) {
+                if (file->m_data_vfh[i].is_file() && file->m_data_vfh[i].as.file.fd != -1) {
                     tasks.launch([i, &file]() { 
                         int res = file->m_part.m_data_serv[i]->nfi_close(file->m_path, file->m_data_vfh[i]); 
                         return WorkerResult(res);

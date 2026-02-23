@@ -49,7 +49,6 @@ namespace XPN
         std::mutex m_wait_mutex;
         std::condition_variable m_wait_cv;
 
-        std::mutex m_full_mutex;
         std::condition_variable m_full_cv;
 
         bool m_stop = false;

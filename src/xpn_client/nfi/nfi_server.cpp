@@ -55,6 +55,19 @@ namespace XPN
     {
         xpn_url url = xpn_parser::parse(m_url);
         m_protocol = url.protocol;
+         if (m_protocol == server_protocols::mpi_server) {
+            m_protocol_type = protocol_t::mpi;
+        } else if (m_protocol == server_protocols::sck_server) {
+            m_protocol_type = protocol_t::sck;
+        } else if (m_protocol == server_protocols::mqtt_server) {
+            m_protocol_type = protocol_t::mqtt;
+        } else if (m_protocol == server_protocols::fabric_server) {
+            m_protocol_type = protocol_t::fabric;
+        } else if (m_protocol == server_protocols::file) {
+            m_protocol_type = protocol_t::file;
+        } else {
+            m_protocol_type = protocol_t::None;
+        }
         m_server = url.server;
         if (url.port.empty()) {
             m_server_port = DEFAULT_XPN_SERVER_CONTROL_PORT;

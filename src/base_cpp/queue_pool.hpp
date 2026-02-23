@@ -22,36 +22,29 @@
 #pragma once
 
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <queue>
 
 template <typename T>
 class queue_pool {
    public:
-    ~queue_pool() {
-        std::unique_lock lock(m_mutex);
-        for (auto&& ptr : m_queue) {
-            delete ptr;
-        }
-        m_queue.clear();
-    }
-
-    T* acquire() {
+    std::unique_ptr<T> acquire() {
         std::unique_lock lock(m_mutex);
         if (m_queue.empty()) {
-            return new T();
+            return std::make_unique<T>();
         }
-        T* obj = m_queue.back();
-        m_queue.resize(m_queue.size() - 1);
+        std::unique_ptr<T> obj = std::move(m_queue.back());
+        m_queue.pop_back();
         return obj;
     }
 
-    void release(T* obj) {
+    void release(std::unique_ptr<T> obj) {
         std::unique_lock lock(m_mutex);
-        m_queue.emplace_back(obj);
+        m_queue.emplace_back(std::move(obj));
     }
 
    private:
-    std::vector<T*> m_queue;
+    std::vector<std::unique_ptr<T>> m_queue;
     std::mutex m_mutex;
 };

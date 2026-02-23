@@ -22,6 +22,7 @@
 #include "nfi_local.hpp"
 #include "base_cpp/fixed_string.hpp"
 #include "base_cpp/xpn_env.hpp"
+#include "nfi/nfi_server.hpp"
 #include "xpn/xpn_file.hpp"
 #include "xpn_server/xpn_server_ops.hpp"
 #include <fcntl.h>
@@ -54,7 +55,8 @@ int nfi_local::nfi_open (std::string_view path, int flags, mode_t mode, xpn_fh &
     PROXY(close)(ret);
   }
 
-  fho.set_file(ret);
+  fho.type = xpn_fh::type_t::File;
+  fho.as.file.fd = ret;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] nfi_local_open("<<srv_path.c_str()<<")="<<ret);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_open] << End");
@@ -75,11 +77,11 @@ int nfi_local::nfi_close ([[maybe_unused]] std::string_view path, const xpn_fh &
 
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] >> Begin");
     
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as_file().fd<<")");
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as.file.fd<<")");
 
-    ret = PROXY(close)(fh.as_file().fd);
+    ret = PROXY(close)(fh.as.file.fd);
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as_file().fd<<")="<<ret);
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] nfi_local_close("<<fh.as.file.fd<<")="<<ret);
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_close] >> End");
 
     return ret;
@@ -108,7 +110,7 @@ int64_t nfi_local::nfi_read (std::string_view path, const xpn_fh &fh, char *buff
   srv_path.append(path);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
-    fd = fh.as_file().fd;
+    fd = fh.as.file.fd;
   }else{
     fd = PROXY(open)(srv_path.c_str(), O_RDONLY);
   }
@@ -161,7 +163,7 @@ int64_t nfi_local::nfi_write (std::string_view path, const xpn_fh &fh, const cha
   srv_path.append(path);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
-    fd = fh.as_file().fd;
+    fd = fh.as.file.fd;
   }else{
     fd = PROXY(open)(srv_path.c_str(), O_WRONLY);
   }
@@ -349,7 +351,9 @@ int nfi_local::nfi_opendir(std::string_view path, xpn_fh &fho)
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] nfi_local_opendir("<<srv_path<<")="<<s);
 
-  fho.set_dir(telldir_res, reinterpret_cast<int64_t>(s));
+  fho.type = xpn_fh::type_t::Dir;
+  fho.as.dir.dir = reinterpret_cast<int64_t>(s);
+  fho.as.dir.telldir = telldir_res;
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_opendir] >> End");
 
@@ -379,9 +383,9 @@ int nfi_local::nfi_readdir(std::string_view path, xpn_fh &fhd, struct ::dirent &
       return -1;
     }
     
-    PROXY(seekdir)(s, fhd.as_dir().telldir);
+    PROXY(seekdir)(s, fhd.as.dir.telldir);
   }else{
-    s = reinterpret_cast<::DIR*>(fhd.as_dir().dir);
+    s = reinterpret_cast<::DIR*>(fhd.as.dir.dir);
   }
   // Reset errno
   errno = 0;
@@ -392,7 +396,7 @@ int nfi_local::nfi_readdir(std::string_view path, xpn_fh &fhd, struct ::dirent &
     return -1;
   }
   if (xpn_env::get_instance().xpn_session_dir == 0){
-    fhd.set_dir(PROXY(telldir)(s), fhd.as_dir().dir);
+    fhd.as.dir.telldir = PROXY(telldir)(s);
     PROXY(closedir)(s);
   }
 
@@ -411,11 +415,11 @@ int nfi_local::nfi_closedir ([[maybe_unused]] std::string_view path, const xpn_f
 
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] >> Begin");
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as_dir().dir<<")");
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as.dir.dir<<")");
 
-    ret = PROXY(closedir)(reinterpret_cast<::DIR*>(fhd.as_dir().dir));
+    ret = PROXY(closedir)(reinterpret_cast<::DIR*>(fhd.as.dir.dir));
 
-    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as_dir().dir<<")="<<ret);
+    debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] nfi_local_closedir("<<fhd.as.dir.dir<<")="<<ret);
     debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_closedir] >> End");
 
     return ret;
@@ -525,7 +529,7 @@ int nfi_local::nfi_write_mdata (std::string_view path, const xpn_fh &fh, const x
 
   // is necessary to do it in xpn_server in order to ensure atomic operation
   if(only_file_size){
-    if (m_protocol == "file") {
+    if (m_protocol_type == nfi_server::protocol_t::file) {
       static std::mutex m;
       uint64_t actual_file_size = 0;
       std::unique_lock lock(m);
@@ -554,7 +558,7 @@ int nfi_local::nfi_write_mdata (std::string_view path, const xpn_fh &fh, const x
       msg.path.path[length] = '\0';
       msg.path.size = length + 1;
       msg.size = mdata.file_size;
-      msg.fd = fh.as_file().fd;
+      msg.fd = fh.as.file.fd;
       msg.xpn_session = xpn_env::get_instance().xpn_session_file;
       ret = nfi_write_operation(xpn_server_ops::WRITE_MDATA_FILE_SIZE, msg, false);
     }
