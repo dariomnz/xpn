@@ -21,6 +21,7 @@
 
 #pragma once
 
+  #include <sys/uio.h>
   #include "xpn_server_params.hpp"
   #include "xpn_server_ops.hpp"
   #include <memory>
@@ -36,6 +37,8 @@ namespace XPN
     virtual int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) = 0;
     virtual int64_t read_data(void *data, int64_t size, int rank_client_id, int tag_client_id) = 0;
     virtual int64_t write_data(const void *data, int64_t size, int rank_client_id, int tag_client_id) = 0;
+    virtual int64_t readv_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) = 0;
+    virtual int64_t writev_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) = 0;
 
     virtual int64_t get_rank() = 0;
   };
@@ -53,7 +56,7 @@ namespace XPN
     virtual std::shared_ptr<xpn_server_comm> create(int rank_client_id) = 0;
     virtual int rearm(int rank_client_id) = 0;
     virtual void disconnect(int rank_client_id) = 0;
-    virtual int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) = 0;
+    virtual int64_t read_operation(std::unique_ptr<xpn_server_msg> &msg, int &rank_client_id, int &tag_client_id) = 0;
 
     static std::unique_ptr<xpn_server_control_comm> Create(xpn_server_params &params);
   public:

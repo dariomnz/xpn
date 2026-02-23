@@ -198,7 +198,7 @@ void mpi_server_control_comm::disconnect([[maybe_unused]] int rank_client_id) {
   unreachable("unsupported");
 }
 
-int64_t mpi_server_control_comm::read_operation([[maybe_unused]] xpn_server_msg &msg, [[maybe_unused]] int &rank_client_id, [[maybe_unused]] int &tag_client_id) {
+int64_t mpi_server_control_comm::read_operation([[maybe_unused]] std::unique_ptr<xpn_server_msg> &msg, [[maybe_unused]] int &rank_client_id, [[maybe_unused]] int &tag_client_id) {
   unreachable("unsupported");
 }
 
@@ -291,4 +291,11 @@ int64_t mpi_server_comm::write_data ( const void *data, int64_t size, int rank_c
   return size;
 }
 
+int64_t mpi_server_comm::readv_data ( [[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int rank_client_id, [[maybe_unused]] int tag_client_id ) {
+  unreachable("unsupported");
+}
+
+int64_t mpi_server_comm::writev_data ( [[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int rank_client_id, [[maybe_unused]] int tag_client_id ) {
+  unreachable("unsupported");
+}
 } // namespace XPN

@@ -43,7 +43,7 @@ void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
     int ret;
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] >> Begin");
-    xpn_server_msg* msg;
+    std::unique_ptr<xpn_server_msg> msg;
     xpn_server_ops type_op = xpn_server_ops::size;
     int rank_client_id = 0, tag_client_id = 0;
     int disconnect = 0;
@@ -72,7 +72,7 @@ void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
             disconnect = 1;
             std::unique_lock l(m_clients_mutex);
             m_clients.erase(comm->get_rank());
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
             continue;
         }
         
@@ -82,15 +82,15 @@ void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
             disconnect = 1;
             std::unique_lock l(m_clients_mutex);
             m_clients.erase(comm->get_rank());
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
             continue;
         }
         timer timer;
-        m_worker2->launch_no_future([this, timer, comm, msg, rank_client_id, tag_client_id] () {
+        m_worker2->launch_no_future([this, timer, comm, msg = std::move(msg), rank_client_id, tag_client_id] () mutable {
             std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); } 
             do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
         });
 
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] Worker launched");
@@ -110,7 +110,7 @@ void xpn_server::one_dispatcher () {
     
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] >> Begin");
     int ret;
-    xpn_server_msg* msg;
+    std::unique_ptr<xpn_server_msg> msg;
     xpn_server_ops type_op = xpn_server_ops::size;
     int rank_client_id = 0, tag_client_id = 0;
 
@@ -131,7 +131,7 @@ void xpn_server::one_dispatcher () {
         }
 
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] read operation");
-        ret = m_control_comm->read_operation(*msg, rank_client_id, tag_client_id);
+        ret = m_control_comm->read_operation(msg, rank_client_id, tag_client_id);
         if (ret < 0) {
             print("[XPN_SERVER] ERROR: read operation fail, mark client "<<rank_client_id<<" as disconnected");
             debug_error("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] ERROR: read operation fail mark as disconnected");
@@ -154,13 +154,13 @@ void xpn_server::one_dispatcher () {
                 debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Currently "<<m_clients.size()<<" clients");
             }
             
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
             continue;
         }
 
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Worker launch");
-        m_worker2->launch_no_future([this, timer, msg, rank_client_id, tag_client_id] () {
+        m_worker2->launch_no_future([this, timer, msg = std::move(msg), rank_client_id, tag_client_id] () mutable {
             std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); }
             xpn_server_comm *comm_ptr = nullptr;
@@ -169,7 +169,7 @@ void xpn_server::one_dispatcher () {
                 comm_ptr = m_clients[rank_client_id].get();
             }
             do_operation(*comm_ptr, *msg, rank_client_id, tag_client_id, timer);
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
             m_control_comm->rearm(rank_client_id);
         });
         
@@ -184,7 +184,7 @@ void xpn_server::connectionless_dispatcher () {
     
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] >> Begin");
     int ret;
-    xpn_server_msg* msg;
+    std::unique_ptr<xpn_server_msg> msg;
     xpn_server_ops type_op = xpn_server_ops::size;
     int rank_client_id = 0, tag_client_id = 0;
 
@@ -226,12 +226,12 @@ void xpn_server::connectionless_dispatcher () {
 
         timer timer;
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] Worker launch");
-        m_worker2->launch_no_future([this, comm, timer, msg, rank_client_id, tag_client_id] () {
+        m_worker2->launch_no_future([this, comm, timer, msg = std::move(msg), rank_client_id, tag_client_id] () mutable {
             std::optional<xpn_stats::scope_stat<xpn_stats::op_stats>> op_stat;
             if (xpn_env::get_instance().xpn_stats) { op_stat.emplace(xpn_stats::scope_stat<xpn_stats::op_stats>(m_stats.m_ops_stats[msg->op], timer)); }
             do_operation(*comm, *msg, rank_client_id, tag_client_id, timer);
             m_control_comm_connectionless->disconnect(comm);
-            msg_pool.release(msg);
+            msg_pool.release(std::move(msg));
         });
         
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_connectionless_dispatcher] Worker launched");

@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <sys/uio.h>
 #include <string>
 #include <memory>
 #include <xpn_server/xpn_server_params.hpp>
@@ -41,8 +42,10 @@ namespace XPN
     public:
         virtual ~nfi_xpn_server_comm() = default;
         virtual int64_t write_operation(xpn_server_msg& msg) = 0;
-        virtual int64_t read_data(void *data, int64_t size) = 0;
-        virtual int64_t write_data(const void *data, int64_t size) = 0;
+        virtual int64_t read_data(void *data, int64_t size, int64_t tag = -1) = 0;
+        virtual int64_t write_data(const void *data, int64_t size, int64_t tag = -1) = 0;
+        virtual int64_t readv_data(const iovec *iov, int64_t count, int64_t tag = -1) = 0;
+        virtual int64_t writev_data(const iovec *iov, int64_t count, int64_t tag = -1) = 0;
 
         server_type m_type;
     };

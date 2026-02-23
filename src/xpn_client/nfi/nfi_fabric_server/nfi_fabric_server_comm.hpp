@@ -37,8 +37,10 @@ namespace XPN
     }
 
     int64_t write_operation(xpn_server_msg& msg) override;
-    int64_t read_data(void *data, int64_t size) override;
-    int64_t write_data(const void *data, int64_t size) override;
+    int64_t read_data(void *data, int64_t size, int64_t tag = -1) override;
+    int64_t write_data(const void *data, int64_t size, int64_t tag = -1) override;
+    int64_t readv_data(const iovec *iov, int64_t count, int64_t tag = -1) override;
+    int64_t writev_data(const iovec *iov, int64_t count, int64_t tag = -1) override;
   public:
     int m_comm;
   };

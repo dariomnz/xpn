@@ -19,6 +19,7 @@
  *
  */
 
+#include "base_cpp/debug.hpp"
 #include "base_cpp/fixed_string.hpp"
 #include "base_cpp/socket.hpp"
 #include "base_cpp/ns.hpp"
@@ -284,7 +285,7 @@ int64_t nfi_mpi_server_comm::write_operation(xpn_server_msg& msg) {
     return 0;
 }
 
-int64_t nfi_mpi_server_comm::write_data(const void *data, int64_t size) {
+int64_t nfi_mpi_server_comm::write_data(const void *data, int64_t size, int64_t tag) {
     XPN_PROFILE_FUNCTION_ARGS(size);
     int ret;
 
@@ -299,7 +300,9 @@ int64_t nfi_mpi_server_comm::write_data(const void *data, int64_t size) {
         return -1;
     }
 
-    int tag = (int)(pthread_self() % 32450) + 1;
+    if (tag == -1) {
+        tag = (int)(pthread_self() % 32450) + 1;
+    }
 
     // Send message
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_write_data] Write data ("<<size<<", "<<tag<<")");
@@ -316,7 +319,7 @@ int64_t nfi_mpi_server_comm::write_data(const void *data, int64_t size) {
     return size;
 }
 
-int64_t nfi_mpi_server_comm::read_data(void *data, int64_t size) {
+int64_t nfi_mpi_server_comm::read_data(void *data, int64_t size, int64_t tag) {
     XPN_PROFILE_FUNCTION_ARGS(size);
     int ret;
     MPI_Status status;
@@ -332,7 +335,9 @@ int64_t nfi_mpi_server_comm::read_data(void *data, int64_t size) {
         return -1;
     }
 
-    int tag = (int)(pthread_self() % 32450) + 1;
+    if (tag == -1) {
+        tag = (int)(pthread_self() % 32450) + 1;
+    }
 
     // Get message
     debug_info("[NFI_MPI_SERVER_COMM] [nfi_mpi_server_comm_read_data] Read data ("<<size<<", "<<tag<<")");
@@ -347,6 +352,13 @@ int64_t nfi_mpi_server_comm::read_data(void *data, int64_t size) {
 
     // Return bytes read
     return size;
+}
+
+int64_t nfi_mpi_server_comm::writev_data([[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int64_t tag) {
+    unreachable("unimplemented");
+}
+int64_t nfi_mpi_server_comm::readv_data([[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int64_t tag) {
+    unreachable("unimplemented");
 }
 
 } // namespace XPN

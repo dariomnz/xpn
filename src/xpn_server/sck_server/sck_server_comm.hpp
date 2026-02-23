@@ -38,6 +38,8 @@ namespace XPN
     int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) override;
     int64_t read_data(void *data, int64_t size, int rank_client_id, int tag_client_id) override;
     int64_t write_data(const void *data, int64_t size, int rank_client_id, int tag_client_id) override;
+    int64_t readv_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) override;
+    int64_t writev_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) override;
 
     int64_t get_rank() override { return m_socket; }
   public:
@@ -56,7 +58,7 @@ namespace XPN
     std::shared_ptr<xpn_server_comm> create(int rank_client_id) override;
     int rearm(int rank_client_id) override;
     void disconnect(int rank_client_id) override;
-    int64_t read_operation(xpn_server_msg &msg, int &rank_client_id, int &tag_client_id) override;
+    int64_t read_operation(std::unique_ptr<xpn_server_msg> &msg, int &rank_client_id, int &tag_client_id) override;
   private:
     int m_socket;
     int m_epoll;

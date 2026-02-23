@@ -180,11 +180,7 @@ void sck_server_control_comm::disconnect ( std::shared_ptr<xpn_server_comm> comm
   
   sck_server_comm *in_comm = static_cast<sck_server_comm*>(comm.get());
 
-  if (epoll_ctl(m_epoll, EPOLL_CTL_DEL, in_comm->m_socket, NULL) == -1){
-    debug_error("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] Error: epoll_ctl "<<strerror(errno));
-  }
-
-  socket::close(in_comm->m_socket);
+  disconnect(in_comm->m_socket);
 
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] << End");
 }
@@ -192,7 +188,11 @@ void sck_server_control_comm::disconnect ( std::shared_ptr<xpn_server_comm> comm
 void sck_server_control_comm::disconnect ( int socket )
 {
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] >> Begin");
-  
+
+  if (epoll_ctl(m_epoll, EPOLL_CTL_DEL, socket, NULL) == -1){
+    debug_error("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] Error: epoll_ctl "<<strerror(errno));
+  }
+
   socket::close(socket);
 
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_comm_disconnect] << End");
@@ -286,7 +286,7 @@ struct format_epoll_events {
   }
 };
 
-int64_t sck_server_control_comm::read_operation ( xpn_server_msg &msg, int &rank_client_id, int &tag_client_id )
+int64_t sck_server_control_comm::read_operation ( std::unique_ptr<xpn_server_msg> &msg, int &rank_client_id, int &tag_client_id )
 {
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_control_comm_read_operation] >> Begin");
   struct epoll_event event;
@@ -301,7 +301,7 @@ int64_t sck_server_control_comm::read_operation ( xpn_server_msg &msg, int &rank
 
   int socket = event.data.fd;
   rank_client_id = socket;
-  auto ret = sck_read_operation(socket, msg, tag_client_id);
+  auto ret = sck_read_operation(socket, *msg, tag_client_id);
 
   debug_info("[Server="<<ns::get_host_name()<<"] [SCK_SERVER_COMM] [sck_server_control_comm_read_operation] << End");
 
@@ -376,4 +376,11 @@ int64_t sck_server_comm::write_data ( const void *data, int64_t size, [[maybe_un
   return size;
 }
 
+int64_t sck_server_comm::readv_data ( [[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int rank_client_id, [[maybe_unused]] int tag_client_id ) {
+  unreachable("unsupported");
+}
+
+int64_t sck_server_comm::writev_data ( [[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int rank_client_id, [[maybe_unused]] int tag_client_id ) {
+  unreachable("unsupported");
+}
 } // namespace XPN

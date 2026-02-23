@@ -27,7 +27,9 @@
 #include <cstdint>
 
 #include "base_cpp/filesystem.hpp"
+#include "lz4.h"
 #include "xpn/xpn_metadata.hpp"
+#include "xpn_server/xpn_server_params.hpp"
 
 /* Operations */
 
@@ -39,6 +41,8 @@ enum class xpn_server_ops {
     CREAT_FILE,
     READ_FILE,
     WRITE_FILE,
+    READ_FILE_V2,
+    WRITE_FILE_V2,
     CLOSE_FILE,
     RM_FILE,
     RM_FILE_ASYNC,
@@ -82,6 +86,8 @@ static const std::array<std::string, static_cast<uint64_t>(xpn_server_ops::size)
     "CREAT_FILE",
     "READ_FILE",
     "WRITE_FILE",
+    "READ_FILE_V2",
+    "WRITE_FILE_V2",
     "CLOSE_FILE",
     "RM_FILE",
     "RM_FILE_ASYNC",
@@ -143,6 +149,19 @@ struct xpn_server_double_path {
     const char *path2() const { return path + size1; }
 };
 
+struct xpn_server_path_buffer {
+    uint32_t size_path;
+    uint32_t size_buff;
+    char buff[PATH_MAX + LZ4_COMPRESSBOUND(MAX_BUFFER_SIZE)];
+
+    uint64_t get_size_without_buffer() { return offsetof(std::remove_pointer<decltype(this)>::type, buff) + size_path; }
+    uint64_t get_size() { return get_size_without_buffer() + size_buff; }
+    char *path() { return buff; }
+    char *buffer() { return buff + size_path; }
+    const char *path() const { return buff; }
+    const char *buffer() const { return buff + size_path; }
+};
+
 struct st_xpn_server_status {
     int32_t ret;
     int32_t server_errno;
@@ -173,6 +192,54 @@ struct st_xpn_server_close {
     uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, path) + path.get_size(); }
 };
 
+struct st_xpn_server_read_v2 {
+    int64_t offset;
+    uint64_t size;
+    int fd;
+    char should_compressed;
+    char xpn_session;
+    char xpn_compression;
+    xpn_server_path path;
+
+    uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, path) + path.get_size(); }
+};
+
+struct st_xpn_server_read_v2_req {
+    int64_t size;
+    uint32_t uncompressed_size;
+    uint32_t compressed_size;
+    uint32_t compress_time_us;
+    uint32_t read_time_us;
+    st_xpn_server_status status;
+
+    uint64_t get_size() { return sizeof(*this); }
+};
+
+struct st_xpn_server_write_v2 {
+    int64_t offset;
+    uint32_t size;
+    uint32_t uncompressed_size;
+    uint32_t compressed_size;
+    int fd;
+    char xpn_session;
+    char xpn_compression;
+    xpn_server_path_buffer buff;
+
+    uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, buff) + buff.get_size(); }
+    uint64_t get_size_without_buff() { return offsetof(std::remove_pointer<decltype(this)>::type, buff) + buff.get_size_without_buffer(); }
+};
+
+struct st_xpn_server_write_v2_req {
+    int64_t size;
+    uint32_t uncompressed_size;
+    uint32_t compressed_size;
+    uint32_t decompress_time_us;
+    uint32_t write_time_us;
+    st_xpn_server_status status;
+
+    uint64_t get_size() { return sizeof(*this); }
+};
+
 struct st_xpn_server_rw {
     int64_t offset;
     uint64_t size;
@@ -180,6 +247,7 @@ struct st_xpn_server_rw {
     uint64_t compressed_size;
     int fd;
     char xpn_session;
+    char xpn_compression;
     // uint64_t new_file_size;
     xpn_server_path path;
 
@@ -190,8 +258,9 @@ struct st_xpn_server_rw_req {
     int64_t size;
     uint64_t uncompressed_size;
     uint64_t compressed_size;
-    uint64_t ellapsed_time_ns;
-    struct st_xpn_server_status status;
+    uint32_t compress_time_us;
+    uint32_t rw_time_us;
+    st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
 };
@@ -274,7 +343,7 @@ struct st_xpn_server_setattr {
 struct st_xpn_server_attr_req {
     char status;
     st_xpn_server_stat attr;
-    struct st_xpn_server_status status_req;
+    st_xpn_server_status status_req;
 
     uint64_t get_size() { return sizeof(*this); }
 };
@@ -290,7 +359,7 @@ struct st_xpn_server_readdir {
 
 struct st_xpn_server_opendir_req {
     int64_t dir;
-    struct st_xpn_server_status status;
+    st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
 };
@@ -327,14 +396,14 @@ struct st_xpn_server_readdir_req {
     char end;  // If end = 1 exist entry; 0 not exist
     st_xpn_server_dirent ret;
     int64_t telldir;
-    struct st_xpn_server_status status;
+    st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
 };
 
 struct st_xpn_server_read_mdata_req {
     xpn_metadata::data mdata;
-    struct st_xpn_server_status status;
+    st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
 };
@@ -405,7 +474,7 @@ struct st_xpn_server_statvfs {
 
 struct st_xpn_server_statvfs_req {
     st_xpn_server_statvfs attr;
-    struct st_xpn_server_status status_req;
+    st_xpn_server_status status_req;
 
     uint64_t get_size() { return sizeof(*this); }
 };
@@ -423,6 +492,10 @@ constexpr uint64_t get_xpn_server_max_msg_size() {
     if (size < sizeof(st_xpn_server_path)) size = sizeof(st_xpn_server_path);
     if (size < sizeof(st_xpn_server_close)) size = sizeof(st_xpn_server_close);
     if (size < sizeof(st_xpn_server_rw)) size = sizeof(st_xpn_server_rw);
+    if (size < sizeof(st_xpn_server_read_v2)) size = sizeof(st_xpn_server_read_v2);
+    if (size < sizeof(st_xpn_server_read_v2_req)) size = sizeof(st_xpn_server_read_v2_req);
+    if (size < sizeof(st_xpn_server_write_v2)) size = sizeof(st_xpn_server_write_v2);
+    if (size < sizeof(st_xpn_server_write_v2_req)) size = sizeof(st_xpn_server_write_v2_req);
     if (size < sizeof(st_xpn_server_rw_req)) size = sizeof(st_xpn_server_rw_req);
     if (size < sizeof(st_xpn_server_rename)) size = sizeof(st_xpn_server_rename);
     if (size < sizeof(st_xpn_server_setattr)) size = sizeof(st_xpn_server_setattr);

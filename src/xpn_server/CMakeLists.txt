@@ -13,9 +13,10 @@ add_executable(xpn_server ${XPN_SERVER_HEADERS} ${XPN_SERVER_SOURCE})
 
 target_link_libraries(xpn_server PRIVATE xpn lz4)
 
-target_include_directories(xpn_server PRIVATE
+target_include_directories(xpn_server PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_SOURCE_DIR}/src/xpn_client"
+    "${PROJECT_SOURCE_DIR}/libs/lz4"
 )
 
 add_subdirectory(fabric_server)

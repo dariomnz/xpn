@@ -177,7 +177,7 @@ int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
     return 0;
 }
 
-int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size) {
+int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size, [[maybe_unused]] int64_t tag) {
     XPN_PROFILE_FUNCTION();
     int ret;
 
@@ -207,7 +207,7 @@ int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size) {
     return size;
 }
 
-int64_t nfi_sck_server_comm::read_data(void *data, int64_t size) {
+int64_t nfi_sck_server_comm::read_data(void *data, int64_t size, [[maybe_unused]] int64_t tag) {
     XPN_PROFILE_FUNCTION();
     int ret;
 
@@ -235,6 +235,13 @@ int64_t nfi_sck_server_comm::read_data(void *data, int64_t size) {
 
     // Return bytes read
     return size;
+}
+
+int64_t nfi_sck_server_comm::writev_data([[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int64_t tag) {
+    unreachable("unimplemented");
+}
+int64_t nfi_sck_server_comm::readv_data([[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int64_t tag) {
+    unreachable("unimplemented");
 }
 
 } //namespace XPN

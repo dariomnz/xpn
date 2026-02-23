@@ -51,9 +51,6 @@ class xpn_rw_calculator {
     xpn_rw_operation next_write();
     xpn_rw_operation next_write_one();
 
-    uint64_t max_ops_write();
-    uint64_t max_ops_read();
-
     xpn_rw_operation recalcule_read();
     xpn_rw_operation recalcule_write();
 

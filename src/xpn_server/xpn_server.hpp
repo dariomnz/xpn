@@ -88,6 +88,8 @@ namespace XPN
         void op_creat       ( xpn_server_comm &comm, const st_xpn_server_path_flags   &head, int rank_client_id, int tag_client_id );
         void op_read        ( xpn_server_comm &comm, const st_xpn_server_rw           &head, int rank_client_id, int tag_client_id );
         void op_write       ( xpn_server_comm &comm, const st_xpn_server_rw           &head, int rank_client_id, int tag_client_id );
+        void op_read_v2     ( xpn_server_comm &comm, const st_xpn_server_read_v2      &head, int rank_client_id, int tag_client_id );
+        void op_write_v2    ( xpn_server_comm &comm, const st_xpn_server_write_v2     &head, int rank_client_id, int tag_client_id );
         void op_close       ( xpn_server_comm &comm, const st_xpn_server_close        &head, int rank_client_id, int tag_client_id );
         void op_rm          ( xpn_server_comm &comm, const st_xpn_server_path         &head, int rank_client_id, int tag_client_id );
         void op_rm_async    ( xpn_server_comm &comm, const st_xpn_server_path         &head, int rank_client_id, int tag_client_id );
