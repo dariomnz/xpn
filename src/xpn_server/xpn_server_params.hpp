@@ -94,7 +94,7 @@ namespace XPN
     xpn_server_params& operator=(xpn_server_params&&) = delete;
 
     void show_usage();
-    void show();
+    void show(std::ostream& os);
     bool have_threads() { return static_cast<int>(thread_mode) > 0; }
     int get_argc() { return argc; }
     char** get_argv() { return argv; }

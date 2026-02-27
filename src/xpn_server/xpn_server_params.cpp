@@ -32,57 +32,59 @@ namespace XPN {
 
 /* ... Functions / Funciones ......................................... */
 
-void xpn_server_params::show() {
+void xpn_server_params::show(std::ostream& os) {
     debug_info("[Server=" << ns::get_host_name() << "] [XPN_SERVER_PARAMS] [xpn_server_params_show] >> Begin");
 
-    printf(" | * XPN server current configuration:\n");
+    os <<" █ * XPN server current configuration:\n";
 
-    printf(" |\tcontrol port: \t%d\n", srv_control_port);
+    os << " █\tcontrol port: \t" << srv_control_port << "\n";
     if (srv_comm_port != DEFAULT_XPN_SERVER_COMM_PORT) {
-        printf(" |\tcomm port: \t%d\n", srv_comm_port);
+        os << " █\tcomm port: \t" << srv_comm_port << "\n";
     }
     if (srv_connectionless_port != DEFAULT_XPN_SERVER_CONNECTIONLESS_PORT) {
-        printf(" |\tconnectionless port: \t%d\n", srv_connectionless_port);
+        os << " █\tconnectionless port: \t" << srv_connectionless_port << "\n";
     }
     // * server_type
     if (srv_type == server_type::MPI) {
-        printf(" |\tserver type: \tmpi_server\n");
+        os << " █\tserver type: \tmpi_server\n";
     } else if (srv_type == server_type::SCK) {
-        printf(" |\tserver type: \tsck_server\n");
+        os << " █\tserver type: \tsck_server\n";
     } else if (srv_type == server_type::MQTT) {
-        printf(" |\tserver type: \tmqtt_server\n");
+        os << " █\tserver type: \tmqtt_server\n";
     } else if (srv_type == server_type::FABRIC) {
-        printf(" |\tserver type: \tfabric_server\n");
+        os << " █\tserver type: \tfabric_server\n";
     } else {
-        printf(" |\tserver type: \tError: unknown\n");
+        os << " █\tserver type: \tError: unknown\n";
     }
 
     // * threads
     if (thread_mode == workers_mode::sequential) {
-        printf(" |\tthread mode: \tWithout threads\n");
+        os << " █\tthread mode: \tWithout threads\n";
     } else if (thread_mode == workers_mode::thread_pool) {
-        printf(" |\tthread mode: \tThread Pool Activated\n");
+        os << " █\tthread mode: \tThread Pool Activated\n";
     } else if (thread_mode == workers_mode::thread_on_demand) {
-        printf(" |\tthread mode: \tThread on demand\n");
+        os << " █\tthread mode: \tThread on demand\n";
     } else {
-        printf(" |\tthread mode: \tError: unknown\n");
+        os << " █\tthread mode: \tError: unknown\n";
     }
 
     // * shutdown_file
     if (!shutdown_file.empty()) {
-        printf(" |\tshutdown_file: \t'%s'\n", shutdown_file.c_str());
+        os << " █\tshutdown_file: \t'" << shutdown_file << "'\n";
     }
     // * await
     if (await_stop == 1) {
-        printf(" |\tawait: \ttrue\n");
+        os << " █\tawait: \ttrue\n";
     }
     if (fs_mode == filesystem_mode::xpn) {
-        printf(" |\tproxy mode: \ton\n");
+        os << " █\tproxy mode: \ton\n";
     } else if (fs_mode == filesystem_mode::memory) {
-        printf(" |\tmemoty mode: \ton\n");
+        os << " █\tmemory mode: \ton\n";
+    } else if (fs_mode == filesystem_mode::lz4_disk) {
+        os << " █\tlz4 mode: \ton\n";
     }
     if (mqtt_qos != DEFAULT_XPN_SERVER_MQTT_QOS || srv_type == server_type::MQTT) {
-        printf(" |\tmqtt qos: \t%d\n", mqtt_qos);
+        os << " █\tmqtt qos: \t" << mqtt_qos << "\n";
     }
 
     debug_info("[Server=" << ns::get_host_name() << "] [XPN_SERVER_PARAMS] [xpn_server_params_show] << End");
@@ -142,6 +144,8 @@ xpn_server_params::xpn_server_params(int _argc, char *_argv[]) {
             await_stop = 1;
         } else if (arg == "--memory") {
             fs_mode = filesystem_mode::memory;
+        } else if (arg == "--lz4") {
+            fs_mode = filesystem_mode::lz4_disk;
         } else if (arg == "-x" || arg == "--proxy") {
             fs_mode = filesystem_mode::xpn;
         } else if (arg == "-p" || arg == "--port") {
