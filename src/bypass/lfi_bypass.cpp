@@ -26,10 +26,10 @@
 
 #include "config.h"
 #include "dmtcp.h"
-#include "lower-half-api.h"
 #include "lfi.h"
 #include "lfi_async.h"
 #include "lfi_coll.h"
+#include "lower-half-api.h"
 
 /* ... Const / Const ................................................. */
 
@@ -39,7 +39,7 @@
         NEXT_FNC(printf)("[%ld] ", pthread_self()); \
         NEXT_FNC(printf)(__VA_ARGS__);              \
         NEXT_FNC(printf)("\n");                     \
-        NEXT_FNC(fflush)(stdout);                    \
+        NEXT_FNC(fflush)(stdout);                   \
     }
 #else
 #define debug_info(...)
@@ -156,6 +156,18 @@ extern "C" ssize_t lfi_tsend(int id, const void *data, size_t size, int tag) {
     return ret;
 }
 
+extern "C" ssize_t lfi_tsendv(int id, const iovec *iov, size_t count, int tag) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_tsendv(%d, %p, %ld, %d)", id, iov, count, tag);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(tsendv)(id, iov, count, tag);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_tsendv(%d, %p, %ld, %d) -> %ld", id, iov, count, tag, ret);
+    return ret;
+}
+
 extern "C" ssize_t lfi_recv(int id, void *data, size_t size) {
     ssize_t ret;
     debug_info("[BYPASS] >> lfi_recv(%d, %p, %ld)", id, data, size);
@@ -177,6 +189,70 @@ extern "C" ssize_t lfi_trecv(int id, void *data, size_t size, int tag) {
     RETURN_TO_UPPER_HALF();
     DMTCP_PLUGIN_ENABLE_CKPT();
     debug_info("[BYPASS] << lfi_trecv(%d, %p, %ld, %d) -> %ld", id, data, size, tag, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_trecvv(int id, const iovec *iov, size_t count, int tag) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_trecvv(%d, %p, %ld, %d)", id, iov, count, tag);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(trecvv)(id, iov, count, tag);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_trecvv(%d, %p, %ld, %d) -> %ld", id, iov, count, tag, ret);
+    return ret;
+}
+
+extern "C" lfi_mr_key lfi_mr_reg(void *addr, size_t size) {
+    lfi_mr_key ret;
+    debug_info("[BYPASS] >> lfi_mr_reg(%p, %ld)", addr, size);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(mr_reg)(addr, size);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_mr_reg(%p, %ld) -> %ld-%ld", addr, size, ret.shm_key, ret.peer_key);
+    return ret;
+}
+
+extern "C" int lfi_mr_unreg(lfi_mr_key key) {
+    int ret;
+    debug_info("[BYPASS] >> lfi_mr_unreg(%ld-%ld)", key.shm_key, key.peer_key);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(mr_unreg)(key);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_mr_unreg(%ld-%ld) -> %d", key.shm_key, key.peer_key, ret);
+    return ret;
+}
+
+extern "C" int64_t lfi_put(int id, const void *data, size_t size, uint64_t remote_addr, lfi_mr_key remote_key) {
+    int64_t ret;
+    debug_info("[BYPASS] >> lfi_put(%d, %p, %ld, %ld, %ld-%ld)", id, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(put)(id, data, size, remote_addr, remote_key);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_put(%d, %p, %ld, %ld, %ld-%ld) -> %ld", id, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key, ret);
+    return ret;
+}
+
+extern "C" int64_t lfi_get(int id, void *data, size_t size, uint64_t remote_addr, lfi_mr_key remote_key) {
+    int64_t ret;
+    debug_info("[BYPASS] >> lfi_get(%d, %p, %ld, %ld, %ld-%ld)", id, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(get)(id, data, size, remote_addr, remote_key);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_get(%d, %p, %ld, %ld, %ld-%ld) -> %ld", id, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key, ret);
     return ret;
 }
 
@@ -275,6 +351,18 @@ extern "C" ssize_t lfi_tsend_async(lfi_request *request, const void *data, size_
     return ret;
 }
 
+extern "C" ssize_t lfi_tsendv_async(lfi_request *request, const iovec *iov, size_t count, int tag) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_tsendv_async(%p, %p, %ld, %d)", request, iov, count, tag);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(tsendv_async)(request, iov, count, tag);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_tsendv_async(%p, %p, %ld, %d) -> %ld", request, iov, count, tag, ret);
+    return ret;
+}
+
 extern "C" ssize_t lfi_recv_async(lfi_request *request, void *data, size_t size) {
     ssize_t ret;
     debug_info("[BYPASS] >> lfi_recv_async(%p, %p, %ld)", request, data, size);
@@ -296,6 +384,48 @@ extern "C" ssize_t lfi_trecv_async(lfi_request *request, void *data, size_t size
     RETURN_TO_UPPER_HALF();
     DMTCP_PLUGIN_ENABLE_CKPT();
     debug_info("[BYPASS] << lfi_trecv_async(%p, %p, %ld, %d) -> %ld", request, data, size, tag, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_trecvv_async(lfi_request *request, const iovec *iov, size_t count, int tag) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_trecvv_async(%p, %p, %ld, %d)", request, iov, count, tag);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(trecvv_async)(request, iov, count, tag);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_trecvv_async(%p, %p, %ld, %d) -> %ld", request, iov, count, tag, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_get_async(lfi_request *req, void *data, size_t size, uint64_t remote_addr,
+                                 lfi_mr_key remote_key) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_get_async(%p, %p, %ld, %ld, %ld-%ld)", req, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(get_async)(req, data, size, remote_addr, remote_key);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_get_async(%p, %p, %ld, %ld, %ld-%ld) -> %ld", req, data, size, remote_addr,
+               remote_key.shm_key, remote_key.peer_key, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_put_async(lfi_request *req, const void *data, size_t size, uint64_t remote_addr,
+                                 lfi_mr_key remote_key) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_put_async(%p, %p, %ld, %ld, %ld-%ld)", req, data, size, remote_addr, remote_key.shm_key,
+               remote_key.peer_key);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(put_async)(req, data, size, remote_addr, remote_key);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_put_async(%p, %p, %ld, %ld, %ld-%ld) -> %ld", req, data, size, remote_addr,
+               remote_key.shm_key, remote_key.peer_key, ret);
     return ret;
 }
 
@@ -332,6 +462,42 @@ extern "C" ssize_t lfi_wait_all(lfi_request *requests[], size_t size) {
     RETURN_TO_UPPER_HALF();
     DMTCP_PLUGIN_ENABLE_CKPT();
     debug_info("[BYPASS] << lfi_wait_all(%p, %ld) -> %ld", requests, size, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_test(lfi_request *request) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_test(%p)", request);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(test)(request);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_test(%p) -> %ld", request, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_test_any(lfi_request *requests[], size_t size) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_test_any(%p, %ld)", requests, size);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(test_any)(requests, size);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_test_any(%p, %ld) -> %ld", requests, size, ret);
+    return ret;
+}
+
+extern "C" ssize_t lfi_test_all(lfi_request *requests[], size_t size) {
+    ssize_t ret;
+    debug_info("[BYPASS] >> lfi_test_all(%p, %ld)", requests, size);
+    DMTCP_PLUGIN_DISABLE_CKPT();
+    JUMP_TO_LOWER_HALF(lh_info->fsaddr);
+    ret = NEXT_FUNC(test_all)(requests, size);
+    RETURN_TO_UPPER_HALF();
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    debug_info("[BYPASS] << lfi_test_all(%p, %ld) -> %ld", requests, size, ret);
     return ret;
 }
 
@@ -422,13 +588,14 @@ extern "C" int lfi_broadcast(lfi_group *group, int root, void *data, size_t size
 
 extern "C" int lfi_allreduce(lfi_group *group, void *data, enum lfi_op_type_enum type, enum lfi_op_enum op) {
     int ret;
-    debug_info("[BYPASS] >> lfi_allreduce(%p, %d, %d, %d)", group, data, static_cast<int>(type), static_cast<int>(op));
+    debug_info("[BYPASS] >> lfi_allreduce(%p, %p, %d, %d)", group, data, static_cast<int>(type), static_cast<int>(op));
     DMTCP_PLUGIN_DISABLE_CKPT();
     JUMP_TO_LOWER_HALF(lh_info->fsaddr);
     ret = NEXT_FUNC(allreduce)(group, data, type, op);
     RETURN_TO_UPPER_HALF();
     DMTCP_PLUGIN_ENABLE_CKPT();
-    debug_info("[BYPASS] << lfi_allreduce(%p, %d, %d, %d) -> %d", group, data, static_cast<int>(type), static_cast<int>(op), ret);
+    debug_info("[BYPASS] << lfi_allreduce(%p, %p, %d, %d) -> %d", group, data, static_cast<int>(type),
+               static_cast<int>(op), ret);
     return ret;
 }
 

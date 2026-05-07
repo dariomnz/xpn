@@ -1187,7 +1187,7 @@ extern "C" int chdir(const char *path) {
         debug_info_fmt("[BYPASS] << xpn_chdir(%s) -> %d", skip_xpn_prefix(path), ret);
     } else {
         ret = PROXY(chdir)((char *)path);
-        debug_info_fmt("[BYPASS] << PROXY(chdir)(%s) -> %d", path, ret);
+        debug_info_fmt("[BYPASS] << PROXY(chdir)(%s) -> %d %s", path, ret, (ret < 0 ? strerror(errno) : ""));
     }
     return ret;
 }
