@@ -53,10 +53,21 @@ class xpn_server_filesystem {
     virtual int unlink(const char *path) = 0;
     virtual int rename(const char *oldPath, const char *newPath) = 0;
     virtual int stat(const char *path, struct ::stat *st) = 0;
+    virtual int fstat(int fd, struct ::stat *st) = 0;
 
-    virtual int64_t write(int fd, const void *data, uint64_t len) = 0;
+    struct UniqueFile {
+        dev_t dev;
+        ino_t ino;
+    };
+    UniqueFile get_unique_file(int fd) {
+        struct stat st;
+        if (fstat(fd, &st) == 0) {
+            return {st.st_dev, st.st_ino};
+        }
+        return {0, 0};
+    }
+
     virtual int64_t pwrite(int fd, const void *data, uint64_t len, int64_t offset) = 0;
-    virtual int64_t read(int fd, void *data, uint64_t len) = 0;
     virtual int64_t pread(int fd, void *data, uint64_t len, int64_t offset) = 0;
 
     virtual int mkdir(const char *path, uint32_t mode) = 0;

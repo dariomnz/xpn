@@ -87,9 +87,9 @@ int xpn_server_filesystem_xpn::stat(const char *path, struct ::stat *st) {
     return ret;
 }
 
-int64_t xpn_server_filesystem_xpn::write(int fd, const void *data, uint64_t len) {
+int xpn_server_filesystem_xpn::fstat(int fd, struct ::stat *st) {
     debug_info(" >> BEGIN");
-    auto ret = xpn_write(fd, data, len);
+    auto ret = xpn_fstat(fd, st);
     debug_info(" << END");
     return ret;
 }
@@ -97,13 +97,6 @@ int64_t xpn_server_filesystem_xpn::write(int fd, const void *data, uint64_t len)
 int64_t xpn_server_filesystem_xpn::pwrite(int fd, const void *data, uint64_t len, int64_t offset) {
     debug_info(" >> BEGIN");
     auto ret = xpn_pwrite(fd, data, len, offset);
-    debug_info(" << END");
-    return ret;
-}
-
-int64_t xpn_server_filesystem_xpn::read(int fd, void *data, uint64_t len) {
-    debug_info(" >> BEGIN");
-    auto ret = xpn_read(fd, data, len);
     debug_info(" << END");
     return ret;
 }

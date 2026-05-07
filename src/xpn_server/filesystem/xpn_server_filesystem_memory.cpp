@@ -398,6 +398,23 @@ int xpn_server_filesystem_memory::stat(const char *path, struct ::stat *st) {
     return 0;
 }
 
+int xpn_server_filesystem_memory::fstat(int fd, struct ::stat *st) {
+    debug_info(" >> BEGIN");
+    std::shared_lock fs_lock(open_files_mutex);
+    auto it = open_files.find(fd);
+    if (it == open_files.end()) {
+        errno = EBADF;
+        debug_info(" << END -1 EBADF");
+        return -1;
+    }
+
+    OpenFile &of = it->second;
+    *st = of.file->stat_data;
+
+    debug_info(" << END 0");
+    return 0;
+}
+
 int64_t xpn_server_filesystem_memory::internal_pwrite(OpenFile &of, const void *data, uint64_t len, uint64_t offset) {
     debug_info(" >> BEGIN");
     auto file = of.file;
@@ -470,32 +487,6 @@ int64_t xpn_server_filesystem_memory::internal_pwrite(OpenFile &of, const void *
     return len;
 }
 
-int64_t xpn_server_filesystem_memory::write(int fd, const void *data, uint64_t len) {
-    debug_info(" >> BEGIN (" << fd << ", " << len << ")");
-    std::shared_lock fs_lock(open_files_mutex);
-    auto it = open_files.find(fd);
-    if (it == open_files.end()) {
-        errno = EBADF;
-        debug_info(" << END -1 EBADF");
-        return -1;
-    }
-
-    OpenFile &of = it->second;
-
-    if ((of.flags & O_ACCMODE) == O_RDONLY) {
-        errno = EBADF;
-        debug_info(" << END -1 EBADF (RDONLY)");
-        return -1;
-    }
-
-    int64_t res = internal_pwrite(of, data, len, of.pos);
-
-    of.pos += res;
-
-    debug_info(" << END " << res);
-    return res;
-}
-
 int64_t xpn_server_filesystem_memory::pwrite(int fd, const void *data, uint64_t len, int64_t offset) {
     debug_info(" >> BEGIN (" << fd << ", " << len << ", " << offset << ")");
     std::shared_lock fs_lock(open_files_mutex);
@@ -562,30 +553,6 @@ int64_t xpn_server_filesystem_memory::internal_pread(OpenFile &of, void *data, u
 
     debug_info(" << END " << to_read);
     return to_read;
-}
-
-int64_t xpn_server_filesystem_memory::read(int fd, void *data, uint64_t len) {
-    debug_info(" >> BEGIN (" << fd << ", " << len << ")");
-    std::shared_lock fs_lock(open_files_mutex);
-    auto it = open_files.find(fd);
-    if (it == open_files.end()) {
-        errno = EBADF;
-        debug_info(" << END -1 EBADF");
-        return -1;
-    }
-
-    OpenFile &of = it->second;
-    if ((of.flags & O_ACCMODE) == O_WRONLY) {
-        errno = EBADF;
-        debug_info(" << END -1 EBADF");
-        return -1;
-    }
-
-    int64_t res = internal_pread(of, data, len, of.pos);
-
-    of.pos += res;
-    debug_info(" << END " << res);
-    return res;
 }
 
 int64_t xpn_server_filesystem_memory::pread(int fd, void *data, uint64_t len, int64_t offset) {

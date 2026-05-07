@@ -35,10 +35,9 @@ class xpn_server_filesystem_xpn : public xpn_server_filesystem {
     int unlink(const char *path) override;
     int rename(const char *oldPath, const char *newPath) override;
     int stat(const char *path, struct ::stat *st) override;
+    int fstat(int fd, struct ::stat *st) override;
 
-    int64_t write(int fd, const void *data, uint64_t len) override;
     int64_t pwrite(int fd, const void *data, uint64_t len, int64_t offset) override;
-    int64_t read(int fd, void *data, uint64_t len) override;
     int64_t pread(int fd, void *data, uint64_t len, int64_t offset) override;
 
     int mkdir(const char *path, uint32_t mode) override;
