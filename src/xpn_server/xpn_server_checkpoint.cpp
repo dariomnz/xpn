@@ -29,7 +29,7 @@ namespace XPN {
 
 const char* s_serv_name = "nullptr";
 std::chrono::time_point<std::chrono::high_resolution_clock> s_start_time;
-static constexpr int BUFFER_SIZE = 1024 * 1024;
+static constexpr int BUFFER_SIZE = 512 * 1024;
 
 int checkpoint_dir(std::unique_ptr<xpn_server_filesystem>& fs, const std::string& to_path, uint32_t mode) {
     XPN_PROFILE_FUNCTION();
@@ -152,18 +152,70 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
     // File   | copy_file_range | sendfile | read_write
     // 5GiB   |          833 ms |  1081 ms |    2560 ms
     // 100MiB |           55 ms |    59 ms |      48 ms
+    // if (fs->m_mode == filesystem_mode::disk || fs->m_mode == filesystem_mode::lz4_disk) {
+    //     // First try with copy_file_range to use kernel optimizations
+    //     debug_info("[Server=" << s_serv_name << "] [XPN_SERVER_OPS] [checkpoint_file] Try copy_file_range");
+    //     err = copy_file_range(from_fd, NULL, to_fd, NULL, file_size, 0);
+    //     if (err < 0) {
+    //         debug_error("copy_file_range " << from_fd << " " << to_fd << " " << file_size << " " << strerror(errno));
+    //         debug_info("[Server=" << s_serv_name << "] [XPN_SERVER_OPS] [checkpoint_file] Try sendfile");
+    //         // Second try if copy_file_range fails to use sendfile to use other kernel optimizations
+    //         err = sendfile(to_fd, from_fd, NULL, file_size);
+    //         if (err < 0) {
+    //             debug_error("sendfile " << from_fd << " " << to_fd << " " << file_size << " " << strerror(errno));
+    //         }
+    //     }
+    // }
     if (fs->m_mode == filesystem_mode::disk) {
-        // First try with copy_file_range to use kernel optimizations
-        debug_info("[Server=" << s_serv_name << "] [XPN_SERVER_OPS] [checkpoint_file] Try copy_file_range");
-        err = copy_file_range(from_fd, NULL, to_fd, NULL, file_size, 0);
-        if (err < 0) {
-            debug_error("copy_file_range " << from_fd << " " << to_fd << " " << file_size << " " << strerror(errno));
-            debug_info("[Server=" << s_serv_name << "] [XPN_SERVER_OPS] [checkpoint_file] Try sendfile");
-            // Second try if copy_file_range fails to use sendfile to use other kernel optimizations
-            err = sendfile(to_fd, from_fd, NULL, file_size);
-            if (err < 0) {
-                debug_error("sendfile " << from_fd << " " << to_fd << " " << file_size << " " << strerror(errno));
+        off_t current_pos = 0;
+        bool copy_failed = false;
+
+        debug_info("[Server=" << s_serv_name << "] [XPN_SERVER_OPS] Sparse copy");
+
+        // if (fallocate(to_fd, 0, 0, file_size) != 0) {
+        //     debug_error("fallocate failed to set size: " << file_size << " " << strerror(errno));
+        //     copy_failed = true;
+        // }
+
+        while (current_pos < file_size && !copy_failed) {
+            off_t data_start = lseek(from_fd, current_pos, SEEK_DATA);
+
+            if (data_start == -1) {
+                if (errno == ENXIO) break;
+                copy_failed = true;
+                break;
             }
+
+            off_t data_end = lseek(from_fd, data_start, SEEK_HOLE);
+            if (data_end == -1) {
+                copy_failed = true;
+                break;
+            }
+            size_t segment_len = data_end - data_start;
+            off_t off_in = data_start;
+            off_t off_out = data_start;
+
+            ssize_t bytes_copied = copy_file_range(from_fd, &off_in, to_fd, &off_out, segment_len, 0);
+            debug_info("copy_file_range " << from_fd << " " << off_in << " " << to_fd << " " << off_out << " "
+                                          << segment_len << " = " << bytes_copied << " " << strerror(errno));
+            if (bytes_copied < 0) {
+                // Fallback to sendfile
+                lseek(from_fd, data_start, SEEK_SET);
+                lseek(to_fd, data_start, SEEK_SET);
+                bytes_copied = sendfile(to_fd, from_fd, NULL, segment_len);
+                debug_info("sendfile " << to_fd << " " << from_fd << " " << nullptr << " " << segment_len << " = "
+                                       << bytes_copied << " " << strerror(errno));
+                if (bytes_copied < 0) {
+                    copy_failed = true;
+                    break;
+                }
+            }
+            current_pos = data_end;
+        }
+        if (!copy_failed) {
+            ftruncate(to_fd, file_size);
+        } else {
+            err = -1;
         }
     }
     // If is proxy server it need to be this method to pass it to the next servers
@@ -186,7 +238,7 @@ int checkpoint_file(std::unique_ptr<workers>& worker, std::unique_ptr<xpn_server
             if (r.result < 0) {
                 err -= 1;
             }
-            return true; // Continue
+            return true;  // Continue
         };
         FixedTaskQueue tasks(*worker, result_handler);
         for (int i = 0; i < effective_threads; ++i) {

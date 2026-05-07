@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+
 #include <cstdint>
 
 #include "base_cpp/filesystem.hpp"
@@ -199,6 +200,8 @@ struct st_xpn_server_read_v2 {
     char should_compressed;
     char xpn_session;
     char xpn_compression;
+    char disk_compress;
+    uint32_t bsize;
     xpn_server_path path;
 
     uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, path) + path.get_size(); }
@@ -210,6 +213,7 @@ struct st_xpn_server_read_v2_req {
     uint32_t compressed_size;
     uint32_t compress_time_us;
     uint32_t read_time_us;
+    uint32_t num_clients;
     st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
@@ -223,10 +227,14 @@ struct st_xpn_server_write_v2 {
     int fd;
     char xpn_session;
     char xpn_compression;
+    char disk_compress;
+    uint32_t bsize;
     xpn_server_path_buffer buff;
 
     uint64_t get_size() { return offsetof(std::remove_pointer<decltype(this)>::type, buff) + buff.get_size(); }
-    uint64_t get_size_without_buff() { return offsetof(std::remove_pointer<decltype(this)>::type, buff) + buff.get_size_without_buffer(); }
+    uint64_t get_size_without_buff() {
+        return offsetof(std::remove_pointer<decltype(this)>::type, buff) + buff.get_size_without_buffer();
+    }
 };
 
 struct st_xpn_server_write_v2_req {
@@ -235,6 +243,7 @@ struct st_xpn_server_write_v2_req {
     uint32_t compressed_size;
     uint32_t decompress_time_us;
     uint32_t write_time_us;
+    uint32_t num_clients;
     st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }
@@ -248,6 +257,8 @@ struct st_xpn_server_rw {
     int fd;
     char xpn_session;
     char xpn_compression;
+    char disk_compress;
+    uint32_t bsize;
     // uint64_t new_file_size;
     xpn_server_path path;
 
@@ -260,6 +271,7 @@ struct st_xpn_server_rw_req {
     uint64_t compressed_size;
     uint32_t compress_time_us;
     uint32_t rw_time_us;
+    uint32_t num_clients;
     st_xpn_server_status status;
 
     uint64_t get_size() { return sizeof(*this); }

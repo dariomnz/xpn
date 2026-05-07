@@ -156,11 +156,12 @@ int xpn_controller::local_mk_config() {
     auto conffile = xpn_env::get_instance().xpn_conf;
     // Optional options
     auto bsize = m_args.get_option(option_bsize);
+    auto compressed = m_args.has_option(option_compressed) ? "true" : "false";
     auto replication_level = m_args.get_option(option_replication_level);
     auto server_type = m_args.get_option(option_server_type);
     auto storage_path = m_args.get_option(option_storage_path);
 
-    int ret = mk_config(hostfile, hostlist, conffile, bsize, replication_level, server_type, storage_path);
+    int ret = mk_config(hostfile, hostlist, conffile, bsize, compressed, replication_level, server_type, storage_path);
 
     debug_info("[XPN_CONTROLLER] >> End");
     return ret;
@@ -168,13 +169,13 @@ int xpn_controller::local_mk_config() {
 
 // TODO: allow use of hostlist, not only hostfile
 int xpn_controller::mk_config(std::string_view hostfile, [[maybe_unused]] std::string_view hostlist,
-                              const char* conffile, std::string_view bsize,
+                              const char* conffile, std::string_view bsize, std::string_view compressed,
                               std::string_view replication_level, std::string_view server_type,
                               std::string_view storage_path) {
     int ret;
     debug_info("[XPN_CONTROLLER] >> Start");
-    if (hostfile.empty()) {
-        std::cerr << "To mk_config is necesary the option hostfile" << std::endl;
+    if (hostfile.empty() && hostlist.empty()) {
+        std::cerr << "To mk_config is necesary the option hostfile or hostlist" << std::endl;
         return -1;
     }
     if (conffile == nullptr) {
@@ -194,6 +195,9 @@ int xpn_controller::mk_config(std::string_view hostfile, [[maybe_unused]] std::s
     if (!bsize.empty()) {
         part.bsize = atoi(std::string(bsize).c_str());
     }
+    if (!compressed.empty()) {
+        part.compressed = compressed == "true";
+    }
     if (!replication_level.empty()) {
         part.replication_level = atoi(std::string(replication_level).c_str());
     }
@@ -209,13 +213,12 @@ int xpn_controller::mk_config(std::string_view hostfile, [[maybe_unused]] std::s
         std::string line;
         // Get the options or default op
         std::string_view server_type_str = server_type.empty() ? XPN_CONF::DEFAULT_SERVER_TYPE : server_type;
-        std::string_view storage_path_str =
-            storage_path.empty() ? XPN_CONF::DEFAULT_STORAGE_PATH : storage_path;
+        std::string_view storage_path_str = storage_path.empty() ? XPN_CONF::DEFAULT_STORAGE_PATH : storage_path;
         while (std::getline(file, line)) {
             if (!line.empty()) {
                 FixedString<64> protocol = server_type_str;
                 protocol += "_server";
-                xpn_url url{.protocol=protocol, .server=line, .path=storage_path_str};
+                xpn_url url{.protocol = protocol, .server = line, .path = storage_path_str};
                 line = xpn_parser::create(url);
                 part.server_urls.emplace_back(line);
             }
@@ -254,7 +257,7 @@ int xpn_controller::update_config(const std::vector<std::string_view>& new_hostl
     part.server_urls.clear();
     part.server_urls.reserve(new_hostlist.size());
     for (auto& srv : new_hostlist) {
-        xpn_url srv_url{.protocol=url.protocol, .server=srv, .path=url.path};
+        xpn_url srv_url{.protocol = url.protocol, .server = srv, .path = url.path};
         part.server_urls.emplace_back(xpn_parser::create(srv_url));
     }
 
@@ -375,13 +378,13 @@ int xpn_controller::stop_servers(bool await) {
     int res = 0;
     debug_info("[XPN_CONTROLLER] >> Start");
     std::unique_ptr<workers> worker = workers::Create(workers_mode::thread_on_demand);
-    
+
     auto result_handler = [&](const WorkerResult& r) {
         if (r.result < 0) {
             res = r.result;
             errno = r.errorno;
         }
-        return true; // Continue
+        return true;  // Continue
     };
     FixedTaskQueue tasks(*worker, result_handler);
 #ifdef DEBUG
@@ -449,7 +452,7 @@ int xpn_controller::ping_servers() {
             res = r.result;
             errno = r.errorno;
         }
-        return true; // Continue
+        return true;  // Continue
     };
     FixedTaskQueue tasks(*worker, result_handler);
     for (auto& name : m_servers) {

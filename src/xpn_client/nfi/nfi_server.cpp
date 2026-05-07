@@ -33,7 +33,7 @@
 
 namespace XPN
 {
-    std::unique_ptr<nfi_server> nfi_server::Create(std::string_view url)
+    std::unique_ptr<nfi_server> nfi_server::Create(std::string_view url, uint32_t num_servers)
     {
         xpn_url server_url = xpn_parser::parse(url);
         if (url.find(server_protocols::file) == 0 ||
@@ -44,7 +44,7 @@ namespace XPN
             url.find(server_protocols::sck_server) == 0 ||
             url.find(server_protocols::mqtt_server)  == 0 ||
             url.find(server_protocols::fabric_server) == 0 ){
-                return std::make_unique<nfi_xpn_server>(server_url);
+                return std::make_unique<nfi_xpn_server>(server_url, num_servers);
             }
         
         std::cerr << "Error: server protocol '"<< url << "' is not defined." << std::endl;

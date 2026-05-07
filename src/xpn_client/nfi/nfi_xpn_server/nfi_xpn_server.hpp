@@ -33,22 +33,26 @@ namespace XPN
     class nfi_xpn_server : public nfi_server
     {
     public:
-     nfi_xpn_server(xpn_url url)
+     nfi_xpn_server(xpn_url url, uint32_t num_servers)
          : nfi_server(url),
-           m_read_compressor("Read compressor " + std::string(m_server) + ":" + std::to_string(m_server_port)),
-           m_write_compressor("Write compressor " + std::string(m_server) + ":" + std::to_string(m_server_port)) {}
+           m_read_compressor(AdaptiveCompressor::type_t::Read,
+                             "Read compressor " + std::string(m_server) + ":" + std::to_string(m_server_port),
+                             num_servers),
+           m_write_compressor(AdaptiveCompressor::type_t::Write,
+                              "Write compressor " + std::string(m_server) + ":" + std::to_string(m_server_port),
+                              num_servers) {}
 
     public:
         // Operations 
         int nfi_open        (std::string_view path, int flags, mode_t mode, xpn_fh &fho) override;
         int nfi_create      (std::string_view path, mode_t mode, xpn_fh &fho) override;
         int nfi_close       (std::string_view path, const xpn_fh &fh) override;
-        int64_t nfi_read    (std::string_view path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
-        int64_t nfi_read_v1    (std::string_view path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size);
-        int64_t nfi_read_v2    (std::string_view path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size);
-        int64_t nfi_write   (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
-        int64_t nfi_write_v1   (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size);
-        int64_t nfi_write_v2   (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size);
+        int64_t nfi_read    (const xpn_file& file, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
+        int64_t nfi_read_v1 (const xpn_file& file, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size);
+        int64_t nfi_read_v2 (const xpn_file& file, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size);
+        int64_t nfi_write   (const xpn_file& file, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
+        int64_t nfi_write_v1(const xpn_file& file, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size);
+        int64_t nfi_write_v2(const xpn_file& file, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size);
         int nfi_remove      (std::string_view path, bool is_async) override;
         int nfi_rename      (std::string_view path, std::string_view new_path) override;
         int nfi_getattr     (std::string_view path, struct ::stat &st) override;

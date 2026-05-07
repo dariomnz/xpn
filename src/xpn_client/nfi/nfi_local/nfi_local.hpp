@@ -40,8 +40,8 @@ namespace XPN
         int nfi_open        (std::string_view path, int flags, mode_t mode, xpn_fh &fho) override;
         int nfi_create      (std::string_view path, mode_t mode, xpn_fh &fho) override;
         int nfi_close       (std::string_view path, const xpn_fh &fh) override;
-        int64_t nfi_read    (std::string_view path, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
-        int64_t nfi_write   (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
+        int64_t nfi_read    (const xpn_file &file, const xpn_fh &fh,       char *buffer, int64_t offset, uint64_t size) override;
+        int64_t nfi_write   (const xpn_file &file, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size) override;
         int nfi_remove      (std::string_view path, bool is_async) override;
         int nfi_rename      (std::string_view path, std::string_view new_path) override;
         int nfi_getattr     (std::string_view path, struct ::stat &st) override;

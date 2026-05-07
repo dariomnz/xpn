@@ -91,7 +91,7 @@ int nfi_local::nfi_close ([[maybe_unused]] std::string_view path, const xpn_fh &
   }
 }
 
-int64_t nfi_local::nfi_read (std::string_view path, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_read (const xpn_file &file, const xpn_fh &fh, char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
@@ -107,7 +107,7 @@ int64_t nfi_local::nfi_read (std::string_view path, const xpn_fh &fh, char *buff
   FixedStringPath srv_path;
   srv_path.append(m_path);
   srv_path.append("/");
-  srv_path.append(path);
+  srv_path.append(file.m_path);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] nfi_local_read("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
     fd = fh.as.file.fd;
@@ -144,7 +144,7 @@ cleanup_nfi_local_read:
   return ret;
 }
 
-int64_t nfi_local::nfi_write (std::string_view path, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
+int64_t nfi_local::nfi_write (const xpn_file &file, const xpn_fh &fh, const char *buffer, int64_t offset, uint64_t size)
 {
   int64_t ret;
 
@@ -160,7 +160,7 @@ int64_t nfi_local::nfi_write (std::string_view path, const xpn_fh &fh, const cha
   FixedStringPath srv_path;
   srv_path.append(m_path);
   srv_path.append("/");
-  srv_path.append(path);
+  srv_path.append(file.m_path);
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] nfi_local_write("<<srv_path<<", "<<offset<<", "<<size<<")");
   if (xpn_env::get_instance().xpn_session_file == 1){
     fd = fh.as.file.fd;

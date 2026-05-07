@@ -17,7 +17,7 @@ int main ( int argc, char *argv[] )
 	    printf("\n") ;
 	    return -1 ;
 	}	
-    xpn_partition part("xpn", 0, 512*KB);
+    xpn_partition part("xpn", 0, 512*KB, false);
     std::string aux_path = "test_file";
     xpn_file file(aux_path, part);
     int blocks = atoi(argv[1]);

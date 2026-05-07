@@ -23,6 +23,7 @@
 #include "xpn_server.hpp"
 #include "base_cpp/timer.hpp"
 #include "lz4.h"
+#include "xpn_server/filesystem/xpn_server_filesystem_lz4.hpp"
 #include "xpn_server/xpn_server_ops.hpp"
 #include <stddef.h>
 #include <fcntl.h>
@@ -59,18 +60,18 @@ void xpn_server::do_operation ( xpn_server_comm &comm, const xpn_server_msg& msg
     case xpn_server_ops::OPEN_FILE:              {HANDLE_OPERATION(st_xpn_server_path_flags,             op_open);                  break;}
     case xpn_server_ops::CREAT_FILE:             {HANDLE_OPERATION(st_xpn_server_path_flags,             op_creat);                 break;}
     case xpn_server_ops::READ_FILE:              {HANDLE_OPERATION(st_xpn_server_rw,                     op_read);
-                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat = std::nullopt;
+                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
                                                   if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_total, msg_struct->size, timer)); } 
                                                   break;}
     case xpn_server_ops::WRITE_FILE:             {HANDLE_OPERATION(st_xpn_server_rw,                     op_write);
                                                   std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
                                                   if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_total, msg_struct->size, timer)); } 
                                                   break;}
-    case xpn_server_ops::READ_FILE_V2:              {HANDLE_OPERATION(st_xpn_server_read_v2,                     op_read_v2);
-                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat = std::nullopt;
+    case xpn_server_ops::READ_FILE_V2:           {HANDLE_OPERATION(st_xpn_server_read_v2,                op_read_v2);
+                                                  std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
                                                   if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_total, msg_struct->size, timer)); } 
                                                   break;}
-    case xpn_server_ops::WRITE_FILE_V2:             {HANDLE_OPERATION(st_xpn_server_write_v2,                     op_write_v2);
+    case xpn_server_ops::WRITE_FILE_V2:          {HANDLE_OPERATION(st_xpn_server_write_v2,               op_write_v2);
                                                   std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
                                                   if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_total, msg_struct->size, timer)); } 
                                                   break;}
@@ -185,6 +186,7 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
 {
   XPN_PROFILE_FUNCTION();
   st_xpn_server_rw_req req{};
+  bool fast_path_used = false;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")");
@@ -192,86 +194,159 @@ void xpn_server::op_read ( xpn_server_comm &comm, const st_xpn_server_rw &head, 
   std::chrono::time_point<std::chrono::high_resolution_clock> read_t1, read_t2;
   std::chrono::time_point<std::chrono::high_resolution_clock> com_t1, com_t2;
 
-  std::vector<char> buffer(head.size);
+  uint64_t buffer_size = head.size;
+  std::unique_ptr<char[]> buffer = std::make_unique_for_overwrite<char[]>(buffer_size);
+  char *buffer_data = buffer.get();
+  uint64_t compressed_data_size = LZ4_COMPRESSBOUND(head.size);
+  std::unique_ptr<char[]> compressed_data = nullptr;
+  char *compressed_data_data = nullptr;
 
-  //Open file
-  int fd;
-  if (head.xpn_session == 1){
-    fd = head.fd;
-  }else{
-    fd = m_filesystem->open(head.path.path, O_RDONLY);
+  xpn_server_filesystem_lz4 lz4_fs(m_filesystem.get(), head.bsize);
+  xpn_server_filesystem * filesystem = m_filesystem.get();
+  if (head.disk_compress == 1){
+    filesystem = &lz4_fs;
   }
-  if (fd < 0)
-  {
+
+  // Open file
+  int fd;
+  if (head.xpn_session == 1) {
+    fd = head.fd;
+  } else {
+    fd = filesystem->open(head.path.path, O_RDONLY);
+  }
+  if (fd < 0) {
     req.size = -1;
     req.status.ret = fd;
     req.status.server_errno = errno;
-    debug_error("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] Error open "<<head.path.path<<" "<<strerror(errno));
-    comm.write_data((char *)&req,sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
-    goto cleanup_xpn_server_op_read;
-  }
-
-  // read data...
-  {
-    std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, buffer.size())); } 
-    if (head.xpn_compression == 1) read_t1 = std::chrono::high_resolution_clock::now();
-    req.size = m_filesystem->pread(fd, buffer.data(), buffer.size(), head.offset);
-    if (head.xpn_compression == 1) read_t2 = std::chrono::high_resolution_clock::now();
-    // req.size = buffer.size();
-  }
-  // if error then send as "how many bytes" -1
-  if (req.size < 0 || req.status.ret == -1)
-  {
-    req.size = -1;
-    req.status.ret = -1;
-    req.status.server_errno = errno;
-    comm.write_data((char *)&req,sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
+    debug_error("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_write] Error open " << head.path.path
+                           << " " << strerror(errno));
+    comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
     goto cleanup_xpn_server_op_read;
   }
 
   if (head.compressed_size == 1) {
-    std::vector<char> compressed_data(LZ4_COMPRESSBOUND(req.size));
-    if (head.xpn_compression == 1) com_t1 = std::chrono::high_resolution_clock::now();
-    req.compressed_size = LZ4_compress_fast(buffer.data(), compressed_data.data(), buffer.size(), compressed_data.size(), 10);
-    if (head.xpn_compression == 1) com_t2 = std::chrono::high_resolution_clock::now();
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] compress read "<<format_bytes(req.compressed_size)<<"/"<< format_bytes(buffer.size()));
-    req.uncompressed_size = req.size;
-    req.status.ret = 0;
-    req.status.server_errno = errno;
-    if (head.xpn_compression == 1) req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(com_t2-com_t1).count();
-    if (head.xpn_compression == 1) req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
-    comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
-    {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size)); } 
-      comm.write_data(compressed_data.data(), req.compressed_size, rank_client_id, tag_client_id);
-    }
-  } else {
-    req.compressed_size = 0;
-    req.uncompressed_size = req.size;
-    req.status.ret = 0;
-    req.status.server_errno = errno;
-    req.compress_time_us = 0;
-    if (head.xpn_compression == 1) req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
-    comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
-    {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.size)); } 
-      comm.write_data(buffer.data(), req.size, rank_client_id, tag_client_id);
+    debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] Alloc compressed data buffer size "
+                          << compressed_data_size << " bytes.");
+    compressed_data = std::make_unique_for_overwrite<char[]>(compressed_data_size);
+    compressed_data_data = compressed_data.get();
+
+    // Optimization to read complete block already compressed
+    if (head.disk_compress != 0) {
+      if (lz4_fs.is_aligned_for_direct_io(head.offset, head.size)) {
+        uint32_t comp_size, uncomp_size;
+
+        if (head.xpn_compression != 0) read_t1 = std::chrono::high_resolution_clock::now();
+        int64_t uncomp_read =
+            lz4_fs.pread_compressed_block(fd, compressed_data_data, head.offset, comp_size, uncomp_size);
+        if (head.xpn_compression != 0) read_t2 = std::chrono::high_resolution_clock::now();
+
+        if (uncomp_read >= 0) {
+            // Successfully read directly!
+            req.size = uncomp_read;
+            req.compressed_size = comp_size;
+            req.uncompressed_size = uncomp_size;
+            req.status.ret = 0;
+            req.status.server_errno = errno;
+            req.compress_time_us = 0;  // Skipped compression!
+            req.num_clients = m_num_clients;
+            if (head.xpn_compression != 0)
+                req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2 - read_t1).count();
+            comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
+
+            std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+            if (xpn_env::get_instance().xpn_stats)
+                io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size));
+            comm.write_data(compressed_data_data, req.compressed_size, rank_client_id, tag_client_id);
+
+            debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] Used ZERO-COPY read. Sent "
+                                  << req.compressed_size << " bytes.");
+            fast_path_used = true;
+        }
+      }
     }
   }
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send data");
+
+  if (!fast_path_used) {
+    // print("warning fast_path_used is not used in read off " << head.offset << " size " << head.size);
+    // read data...
+    {
+      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+      if (xpn_env::get_instance().xpn_stats) {
+        io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, buffer_size));
+      }
+      if (head.xpn_compression != 0) read_t1 = std::chrono::high_resolution_clock::now();
+      req.size = filesystem->pread(fd, buffer_data, buffer_size, head.offset);
+      if (head.xpn_compression != 0) read_t2 = std::chrono::high_resolution_clock::now();
+      // req.size = buffer_size;
+    }
+    // if error then send as "how many bytes" -1
+    if (req.size < 0 || req.status.ret == -1) {
+      req.size = -1;
+      req.status.ret = -1;
+      req.status.server_errno = errno;
+      comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
+      goto cleanup_xpn_server_op_read;
+    }
+    if (head.compressed_size == 1) {
+      if (head.xpn_compression != 0) com_t1 = std::chrono::high_resolution_clock::now();
+      req.compressed_size = LZ4_compress_fast(buffer_data, compressed_data_data, buffer_size, compressed_data_size, 10);
+      if (head.xpn_compression != 0) com_t2 = std::chrono::high_resolution_clock::now();
+      debug_info(
+          "Compression speed: "
+          << ((static_cast<double>(buffer_size) / (1024.0 * 1024.0)) /
+              (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(com_t2 - com_t1).count()) /
+               1000000.0))
+          << " MB/s (" << format_bytes(buffer_size) << " in "
+          << std::chrono::duration_cast<std::chrono::microseconds>(com_t2 - com_t1).count() << " us)");
+      debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] compress read "
+                            << format_bytes(req.compressed_size) << "/" << format_bytes(buffer_size));
+      req.uncompressed_size = req.size;
+      req.status.ret = 0;
+      req.status.server_errno = errno;
+      req.num_clients = m_num_clients;
+      if (head.xpn_compression != 0)
+        req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(com_t2 - com_t1).count();
+      if (head.xpn_compression != 0)
+        req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2 - read_t1).count();
+      comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
+      debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size " << req.size);
+      {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) {
+            io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size));
+        }
+        comm.write_data(compressed_data_data, req.compressed_size, rank_client_id, tag_client_id);
+      }
+    } else {
+      req.compressed_size = 0;
+      req.uncompressed_size = req.size;
+      req.status.ret = 0;
+      req.status.server_errno = errno;
+      req.compress_time_us = 0;
+      req.num_clients = m_num_clients;
+      if (head.xpn_compression != 0)
+        req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2 - read_t1).count();
+      comm.write_data((char *)&req, sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
+      debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size " << req.size);
+      {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) {
+            io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.size));
+        }
+        comm.write_data(buffer_data, req.size, rank_client_id, tag_client_id);
+      }
+    }
+  }
+  debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send data");
 
 cleanup_xpn_server_op_read:
-  if (head.xpn_session == 0){
-    m_filesystem->close(fd);
+  if (head.xpn_session == 0) {
+    filesystem->close(fd);
   }
 
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] << End");
+  debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] read(" << head.path.path << ", "
+                        << head.offset << ", " << head.size << ")=" << req.size);
+  debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] << End");
 }
 
 void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head, int rank_client_id, int tag_client_id )
@@ -279,12 +354,23 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
   XPN_PROFILE_FUNCTION();
   st_xpn_server_rw_req req{};
   int decompressed_size;
+  bool fast_path_used = false;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] write("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")");
 
-  std::vector<char> compressed_buffer(head.compressed_size);
-  std::vector<char> uncompressed_buffer(head.uncompressed_size);
+  uint64_t compressed_buffer_size = head.compressed_size;
+  std::unique_ptr<char[]> compressed_buffer = std::make_unique_for_overwrite<char[]>(compressed_buffer_size);
+  char* compressed_buffer_data = compressed_buffer.get();
+  uint64_t uncompressed_buffer_size = head.uncompressed_size;
+  std::unique_ptr<char[]> uncompressed_buffer = std::make_unique_for_overwrite<char[]>(uncompressed_buffer_size);
+  char* uncompressed_buffer_data = uncompressed_buffer.get();
+
+  xpn_server_filesystem_lz4 lz4_fs(m_filesystem.get(), head.bsize);
+  xpn_server_filesystem *filesystem = m_filesystem.get();
+  if (head.disk_compress == 1){
+    filesystem = &lz4_fs;
+  }
   
   std::chrono::time_point<std::chrono::high_resolution_clock> write_t1, write_t2;
   std::chrono::time_point<std::chrono::high_resolution_clock> decom_t1, decom_t2;
@@ -292,11 +378,14 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
   // read data from MPI and write into the file
   {
     std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_net, head.compressed_size)); } 
+    if (xpn_env::get_instance().xpn_stats) { 
+      int64_t stat_size = head.compressed_size > 0 ? head.compressed_size : head.uncompressed_size;
+      io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_net, stat_size));
+    } 
     if (head.compressed_size > 0) {
-      comm.read_data(compressed_buffer.data(), head.compressed_size, rank_client_id, tag_client_id);
+      comm.read_data(compressed_buffer_data, head.compressed_size, rank_client_id, tag_client_id);
     } else {
-      comm.read_data(uncompressed_buffer.data(), head.uncompressed_size, rank_client_id, tag_client_id);
+      comm.read_data(uncompressed_buffer_data, head.uncompressed_size, rank_client_id, tag_client_id);
     }
   }
 
@@ -305,7 +394,7 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
   if (head.xpn_session == 1) {
     fd = head.fd;
   }else{
-    fd = m_filesystem->open(head.path.path, O_WRONLY);
+    fd = filesystem->open(head.path.path, O_WRONLY);
   }
 
   if (fd < 0) {
@@ -317,26 +406,54 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
 
   
   if (head.compressed_size > 0) {
-    if (head.xpn_compression == 1) decom_t1 = std::chrono::high_resolution_clock::now();
-    decompressed_size = LZ4_decompress_safe(compressed_buffer.data(), uncompressed_buffer.data(), compressed_buffer.size(), uncompressed_buffer.size());
-    if (head.xpn_compression == 1) decom_t2 = std::chrono::high_resolution_clock::now();
-    if (decompressed_size >= 0) {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer.size())); } 
-      if (head.xpn_compression == 1) write_t1 = std::chrono::high_resolution_clock::now();
-      req.size = m_filesystem->pwrite(fd, uncompressed_buffer.data(), uncompressed_buffer.size(), head.offset);
-      if (head.xpn_compression == 1) write_t2 = std::chrono::high_resolution_clock::now();
-      // req.size = uncompressed_buffer.size();
-    } else {
-      req.size = decompressed_size;
+    // Optimization to write complete block already compressed
+    if (head.disk_compress != 0) {
+      if (lz4_fs.is_aligned_for_direct_io(head.offset, head.uncompressed_size)) {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, head.compressed_size));
+
+        if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+
+        int64_t written_logical = lz4_fs.pwrite_compressed_block(fd, compressed_buffer_data, head.compressed_size,
+                                                                  head.uncompressed_size, head.offset);
+        if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+
+        if (written_logical >= 0) {
+            req.size = written_logical;
+            fast_path_used = true;
+            debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] Used ZERO-COPY write for " << head.compressed_size << " bytes.");
+        }
+      }
+    }
+
+    if (!fast_path_used) {
+      if (head.xpn_compression != 0) decom_t1 = std::chrono::high_resolution_clock::now();
+      decompressed_size = LZ4_decompress_safe(compressed_buffer_data, uncompressed_buffer_data, compressed_buffer_size, uncompressed_buffer_size);
+      if (head.xpn_compression != 0) decom_t2 = std::chrono::high_resolution_clock::now();
+      if (decompressed_size >= 0) {
+        debug_info("Decompression speed: "
+                   << ((static_cast<double>(uncompressed_buffer_size) / (1024.0 * 1024.0)) /
+                       (static_cast<double>(
+                            std::chrono::duration_cast<std::chrono::microseconds>(decom_t2 - decom_t1).count()) /
+                        1000000.0))
+                   << " MB/s (" << format_bytes(uncompressed_buffer_size) << " in " << std::chrono::duration_cast<std::chrono::microseconds>(decom_t2 - decom_t1).count() << " us)");
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer_size)); } 
+        if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+        req.size = filesystem->pwrite(fd, uncompressed_buffer_data, uncompressed_buffer_size, head.offset);
+        if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+        // req.size = uncompressed_buffer_size;
+      } else {
+        req.size = decompressed_size;
+      }
     }
   } else {
     std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer.size())); } 
-    if (head.xpn_compression == 1) write_t1 = std::chrono::high_resolution_clock::now();
-    req.size = m_filesystem->pwrite(fd, uncompressed_buffer.data(), uncompressed_buffer.size(), head.offset);
-    if (head.xpn_compression == 1) write_t2 = std::chrono::high_resolution_clock::now();
-    // req.size = uncompressed_buffer.size();
+    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer_size)); } 
+    if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+    req.size = filesystem->pwrite(fd, uncompressed_buffer_data, uncompressed_buffer_size, head.offset);
+    if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+    // req.size = uncompressed_buffer_size;
   }
   // print("write "<<(head.compressed_size > 0 ? head.compressed_size:head.uncompressed_size)<<"/"<<req.size<<" ellapsed recv "<<ellapsed_recv<<" decompress "<<ellapsed_decompress<<" write "<<ellapsed_write);
   if (req.size < 0) {
@@ -346,16 +463,21 @@ void xpn_server::op_write ( xpn_server_comm &comm, const st_xpn_server_rw &head,
 
   req.status.ret = 0;
 cleanup_xpn_server_op_write:
+  // if (!fast_path_used) {
+  //   print("warning fast_path_used is not used in write off " << head.offset << " size " << head.size);
+  // }
   // write to the client the status of the write operation
   req.status.server_errno = errno;
-  if (head.xpn_compression == 1) req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(decom_t2-decom_t1).count();
-  if (head.xpn_compression == 1) req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(write_t2-write_t1).count();
+  req.num_clients = m_num_clients;
+  if (head.xpn_compression != 0) req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(decom_t2-decom_t1).count();
+  if (head.xpn_compression != 0) req.rw_time_us = std::chrono::duration_cast<std::chrono::microseconds>(write_t2-write_t1).count();
+  
   comm.write_data((char *)&req,sizeof(st_xpn_server_rw_req), rank_client_id, tag_client_id);
 
   if (head.xpn_session == 1){
-    m_filesystem->fsync(fd);
+    filesystem->fsync(fd);
   }else{
-    m_filesystem->close(fd);
+    filesystem->close(fd);
   }
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] write("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
@@ -368,17 +490,28 @@ void xpn_server::op_read_v2 ( xpn_server_comm &comm, const st_xpn_server_read_v2
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")");
-
+  bool fast_path_used = false;
   std::chrono::time_point<std::chrono::high_resolution_clock> read_t1, read_t2;
   st_xpn_server_read_v2_req req{};
-  std::vector<char> buffer(head.size);
+  uint64_t buffer_size = head.size;
+  std::unique_ptr<char[]> buffer = std::make_unique_for_overwrite<char[]>(buffer_size);
+  char* buffer_data = buffer.get();
+  uint64_t compressed_data_size = LZ4_COMPRESSBOUND(head.size);
+  std::unique_ptr<char[]> compressed_data = nullptr;
+  char *compressed_data_data = nullptr;
+
+  xpn_server_filesystem_lz4 lz4_fs(m_filesystem.get(), head.bsize);
+  xpn_server_filesystem * filesystem = m_filesystem.get();
+  if (head.disk_compress == 1){
+    filesystem = &lz4_fs;
+  }
 
   //Open file
   int fd;
   if (head.xpn_session == 1){
     fd = head.fd;
   }else{
-    fd = m_filesystem->open(head.path.path, O_RDONLY);
+    fd = filesystem->open(head.path.path, O_RDONLY);
   }
   if (fd < 0)
   {
@@ -390,80 +523,135 @@ void xpn_server::op_read_v2 ( xpn_server_comm &comm, const st_xpn_server_read_v2
     goto cleanup_xpn_server_op_read;
   }
 
-  // read data...
-  {
-    std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-    if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, head.size)); } 
-    if (head.xpn_compression == 1) read_t1 = std::chrono::high_resolution_clock::now();
-    req.size = m_filesystem->pread(fd, buffer.data(), head.size, head.offset);
-    if (head.xpn_compression == 1) read_t2 = std::chrono::high_resolution_clock::now();
-    // req.size = head.size;
-    // req.buff.size_buff = req.size;
-  }
-  // if error then send as "how many bytes" -1
-  if (req.size < 0 || req.status.ret == -1)
-  {
-    req.size = -1;
-    req.status.ret = -1;
-    req.status.server_errno = errno;
-    debug_error("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] Error pread "<<head.path.path<<" "<<strerror(errno));
-    comm.write_data(&req, sizeof(req), rank_client_id, tag_client_id);
-    goto cleanup_xpn_server_op_read;
-  }
-
+  
   if (head.should_compressed == 1) {
-    std::chrono::time_point<std::chrono::high_resolution_clock> com_t1, com_t2;
-    std::vector<char> compressed_data(LZ4_COMPRESSBOUND(req.size));
-    if (head.xpn_compression == 1) com_t1 = std::chrono::high_resolution_clock::now();
-    req.compressed_size = LZ4_compress_fast(buffer.data(), compressed_data.data(), req.size, compressed_data.size(), 10);
-    if (head.xpn_compression == 1) com_t2 = std::chrono::high_resolution_clock::now();
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] compress read "<<format_bytes(req.compressed_size)<<"/"<< format_bytes(buffer.size()));
-    req.uncompressed_size = req.size;
-    req.status.ret = 0;
-    req.status.server_errno = errno;
-    if (head.xpn_compression == 1) req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(com_t2-com_t1).count();
-    if (head.xpn_compression == 1) req.read_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
-    struct iovec iovs[2] = {
-        {
-            .iov_base = &req, 
-            .iov_len  = sizeof(req)
-        },
-        {
-            .iov_base = compressed_data.data(), 
-            .iov_len  = req.compressed_size
+    debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] Alloc compressed data buffer size "
+                          << compressed_data_size << " bytes.");
+    compressed_data = std::make_unique_for_overwrite<char[]>(compressed_data_size);
+    compressed_data_data = compressed_data.get();
+
+    // Optimization to read complete block already compressed
+    if (head.disk_compress != 0) {
+      if (lz4_fs.is_aligned_for_direct_io(head.offset, head.size)) {
+        uint32_t comp_size, uncomp_size;
+
+        if (head.xpn_compression != 0) read_t1 = std::chrono::high_resolution_clock::now();
+        int64_t uncomp_read =
+            lz4_fs.pread_compressed_block(fd, compressed_data_data, head.offset, comp_size, uncomp_size);
+        if (head.xpn_compression != 0) read_t2 = std::chrono::high_resolution_clock::now();
+
+        if (uncomp_read >= 0) {
+            // Successfully read directly!
+            req.size = uncomp_read;
+            req.compressed_size = comp_size;
+            req.uncompressed_size = uncomp_size;
+            req.status.ret = 0;
+            req.status.server_errno = errno;
+            req.compress_time_us = 0;  // Skipped compression!
+            req.num_clients = m_num_clients;
+            if (head.xpn_compression != 0)
+                req.read_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2 - read_t1).count();
+
+            std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+            if (xpn_env::get_instance().xpn_stats)
+                io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size));
+            struct iovec iovs[2] = {
+                {
+                    .iov_base = &req, 
+                    .iov_len  = sizeof(req)
+                },
+                {
+                    .iov_base = compressed_data_data, 
+                    .iov_len  = req.compressed_size
+                }
+            };
+            comm.writev_data(iovs, 2, rank_client_id, tag_client_id);
+
+            debug_info("[Server=" << serv_name << "] [XPN_SERVER_OPS] [xpn_server_op_read] Used ZERO-COPY read. Sent "
+                                  << req.compressed_size << " bytes.");
+            fast_path_used = true;
         }
-    };
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
+      }
+    }
+  }
+  if (!fast_path_used) {
     {
       std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size)); } 
-      comm.writev_data(iovs, 2, rank_client_id, tag_client_id);
+      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_read_disk, head.size)); } 
+      if (head.xpn_compression != 0) read_t1 = std::chrono::high_resolution_clock::now();
+      req.size = filesystem->pread(fd, buffer_data, head.size, head.offset);
+      if (head.xpn_compression != 0) read_t2 = std::chrono::high_resolution_clock::now();
+      // req.size = head.size;
+      // req.buff.size_buff = req.size;
     }
-  } else {
-    req.compressed_size = 0;
-    req.uncompressed_size = req.size;
-    req.status.ret = 0;
-    req.status.server_errno = errno;
-    req.compress_time_us = 0;
-    if (head.xpn_compression == 1) req.read_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
-    struct iovec iovs[2] = {
-        {
-            .iov_base = &req, 
-            .iov_len  = sizeof(req)
-        },
-        {
-            .iov_base = buffer.data(), 
-            .iov_len  = req.uncompressed_size
-        }
-    };
-    comm.writev_data(iovs, 2, rank_client_id, tag_client_id);
-    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] op_read: send size "<< req.size);
-  }
-  debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] op_read: send data");
+    // if error then send as "how many bytes" -1
+    if (req.size < 0 || req.status.ret == -1)
+    {
+      req.size = -1;
+      req.status.ret = -1;
+      req.status.server_errno = errno;
+      debug_error("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] Error pread "<<head.path.path<<" "<<strerror(errno));
+      comm.write_data(&req, sizeof(req), rank_client_id, tag_client_id);
+      goto cleanup_xpn_server_op_read;
+    }
 
+    if (head.should_compressed == 1) {
+      std::chrono::time_point<std::chrono::high_resolution_clock> com_t1, com_t2;
+      uint64_t compressed_data_size = LZ4_COMPRESSBOUND(req.size);
+      std::unique_ptr<char[]> compressed_data = std::make_unique_for_overwrite<char[]>(compressed_data_size);
+      char* compressed_data_data = compressed_data.get();
+      if (head.xpn_compression != 0) com_t1 = std::chrono::high_resolution_clock::now();
+      req.compressed_size = LZ4_compress_fast(buffer_data, compressed_data_data, req.size, compressed_data_size, 10);
+      if (head.xpn_compression != 0) com_t2 = std::chrono::high_resolution_clock::now();
+      debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] compress read "<<format_bytes(req.compressed_size)<<"/"<< format_bytes(buffer_size));
+      req.uncompressed_size = req.size;
+      req.status.ret = 0;
+      req.status.server_errno = errno;      
+      req.num_clients = m_num_clients;
+      if (head.xpn_compression != 0) req.compress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(com_t2-com_t1).count();
+      if (head.xpn_compression != 0) req.read_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
+      struct iovec iovs[2] = {
+          {
+              .iov_base = &req, 
+              .iov_len  = sizeof(req)
+          },
+          {
+              .iov_base = compressed_data_data, 
+              .iov_len  = req.compressed_size
+          }
+      };
+      debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read] op_read: send size "<< req.size);
+      {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_net, req.compressed_size)); } 
+        comm.writev_data(iovs, 2, rank_client_id, tag_client_id);
+      }
+    } else {
+      req.compressed_size = 0;
+      req.uncompressed_size = req.size;
+      req.status.ret = 0;
+      req.status.server_errno = errno;
+      req.compress_time_us = 0;
+      req.num_clients = m_num_clients;
+      if (head.xpn_compression != 0) req.read_time_us = std::chrono::duration_cast<std::chrono::microseconds>(read_t2-read_t1).count();
+      struct iovec iovs[2] = {
+          {
+              .iov_base = &req, 
+              .iov_len  = sizeof(req)
+          },
+          {
+              .iov_base = buffer_data, 
+              .iov_len  = req.uncompressed_size
+          }
+      };
+      comm.writev_data(iovs, 2, rank_client_id, tag_client_id);
+      debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] op_read: send size "<< req.size);
+    }
+    debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] op_read: send data");
+  }
 cleanup_xpn_server_op_read:
   if (head.xpn_session == 0){
-    m_filesystem->close(fd);
+    filesystem->close(fd);
   }
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_read_v2] read("<<head.path.path<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
@@ -476,19 +664,25 @@ void xpn_server::op_write_v2 ( xpn_server_comm &comm, const st_xpn_server_write_
   XPN_PROFILE_FUNCTION();
   st_xpn_server_write_v2_req req{};
   int decompressed_size;
+  bool fast_path_used = false;
   std::chrono::time_point<std::chrono::high_resolution_clock> write_t1, write_t2;
   std::chrono::time_point<std::chrono::high_resolution_clock> decom_t1, decom_t2;
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_v2] >> Begin");
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_v2] write("<<head.buff.path()<<", "<<head.offset<<", "<<head.uncompressed_size<<")");
 
+  xpn_server_filesystem_lz4 lz4_fs(m_filesystem.get(), head.bsize);
+  xpn_server_filesystem * filesystem = m_filesystem.get();
+  if (head.disk_compress == 1){
+    filesystem = &lz4_fs;
+  }
 
   //Open file
   int fd;
   if (head.xpn_session == 1) {
     fd = head.fd;
   }else{
-    fd = m_filesystem->open(head.buff.path(), O_WRONLY);
+    fd = filesystem->open(head.buff.path(), O_WRONLY);
   }
 
   if (fd < 0) {
@@ -499,27 +693,49 @@ void xpn_server::op_write_v2 ( xpn_server_comm &comm, const st_xpn_server_write_
   }
   
   if (head.compressed_size > 0) {
-    std::vector<char> uncompressed_buffer(head.uncompressed_size);
-    if (head.xpn_compression == 1) decom_t1 = std::chrono::high_resolution_clock::now();
-    decompressed_size = LZ4_decompress_safe(head.buff.buffer(), uncompressed_buffer.data(), head.buff.size_buff, uncompressed_buffer.size());
-    if (head.xpn_compression == 1) decom_t2 = std::chrono::high_resolution_clock::now();
-    if (decompressed_size >= 0) {
-      std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
-      if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer.size())); } 
-      if (head.xpn_compression == 1) write_t1 = std::chrono::high_resolution_clock::now();
-      req.size = m_filesystem->pwrite(fd, uncompressed_buffer.data(), uncompressed_buffer.size(), head.offset);
-      if (head.xpn_compression == 1) write_t2 = std::chrono::high_resolution_clock::now();
-      // req.size = uncompressed_buffer.size();
-    } else {
-      req.size = decompressed_size;
+    if (head.disk_compress != 0) {
+      if (lz4_fs.is_aligned_for_direct_io(head.offset, head.uncompressed_size)) {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, head.compressed_size));
+
+        if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+        int64_t written_logical = lz4_fs.pwrite_compressed_block(fd, head.buff.buffer(), head.buff.size_buff,
+                                                                  head.uncompressed_size, head.offset);
+        if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+
+        if (written_logical >= 0) {
+            req.size = written_logical;
+            fast_path_used = true;
+            debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write] Used ZERO-COPY write for " << head.compressed_size << " bytes.");
+        }
+      }
+    }
+
+    if (!fast_path_used) {
+      uint64_t uncompressed_buffer_size = head.uncompressed_size;
+      std::unique_ptr<char[]> uncompressed_buffer = std::make_unique_for_overwrite<char[]>(uncompressed_buffer_size);
+      char* uncompressed_buffer_data = uncompressed_buffer.get();
+      if (head.xpn_compression != 0) decom_t1 = std::chrono::high_resolution_clock::now();
+      decompressed_size = LZ4_decompress_safe(head.buff.buffer(), uncompressed_buffer_data, head.buff.size_buff, uncompressed_buffer_size);
+      if (head.xpn_compression != 0) decom_t2 = std::chrono::high_resolution_clock::now();
+      if (decompressed_size >= 0) {
+        std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
+        if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, uncompressed_buffer_size)); } 
+        if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+        req.size = filesystem->pwrite(fd, uncompressed_buffer_data, uncompressed_buffer_size, head.offset);
+        if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+        // req.size = uncompressed_buffer_size;
+      } else {
+        req.size = decompressed_size;
+      }
     }
   } else {
     std::optional<xpn_stats::scope_stat<xpn_stats::io_stats>> io_stat;
     if (xpn_env::get_instance().xpn_stats) { io_stat.emplace(xpn_stats::scope_stat<xpn_stats::io_stats>(m_stats.m_write_disk, head.buff.size_buff)); } 
-      if (head.xpn_compression == 1) write_t1 = std::chrono::high_resolution_clock::now();
-      req.size = m_filesystem->pwrite(fd, head.buff.buffer(), head.buff.size_buff, head.offset);
-      if (head.xpn_compression == 1) write_t2 = std::chrono::high_resolution_clock::now();
-    // req.size = uncompressed_buffer.size();
+      if (head.xpn_compression != 0) write_t1 = std::chrono::high_resolution_clock::now();
+      req.size = filesystem->pwrite(fd, head.buff.buffer(), head.buff.size_buff, head.offset);
+      if (head.xpn_compression != 0) write_t2 = std::chrono::high_resolution_clock::now();
+    // req.size = uncompressed_buffer_size;
   }
   // print("write "<<(head.compressed_size > 0 ? head.compressed_size:head.uncompressed_size)<<"/"<<req.size<<" ellapsed recv "<<ellapsed_recv<<" decompress "<<ellapsed_decompress<<" write "<<ellapsed_write);
   if (req.size < 0) {
@@ -531,14 +747,14 @@ void xpn_server::op_write_v2 ( xpn_server_comm &comm, const st_xpn_server_write_
 cleanup_xpn_server_op_write:
   // write to the client the status of the write operation
   req.status.server_errno = errno;
-  if (head.xpn_compression == 1) req.decompress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(decom_t2-decom_t1).count();
-  if (head.xpn_compression == 1) req.write_time_us = std::chrono::duration_cast<std::chrono::microseconds>(write_t2-write_t1).count();
+  if (head.xpn_compression != 0) req.decompress_time_us = std::chrono::duration_cast<std::chrono::microseconds>(decom_t2-decom_t1).count();
+  if (head.xpn_compression != 0) req.write_time_us = std::chrono::duration_cast<std::chrono::microseconds>(write_t2-write_t1).count();
   comm.write_data((char *)&req,sizeof(req), rank_client_id, tag_client_id);
 
   if (head.xpn_session == 1){
-    m_filesystem->fsync(fd);
+    filesystem->fsync(fd);
   }else{
-    m_filesystem->close(fd);
+    filesystem->close(fd);
   }
 
   debug_info("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_v2] write("<<head.buff.path()<<", "<<head.offset<<", "<<head.size<<")="<< req.size);
@@ -828,7 +1044,7 @@ void xpn_server::op_read_mdata   ( xpn_server_comm &comm, const st_xpn_server_pa
     goto cleanup_xpn_server_op_read_mdata;
   }
 
-  ret = m_filesystem->read(fd, &req.mdata, sizeof(req.mdata));
+  ret = m_filesystem->pread(fd, &req.mdata, sizeof(req.mdata), 0);
 
   if (!req.mdata.is_valid()){
     req.mdata = {};
@@ -871,7 +1087,7 @@ void xpn_server::op_write_mdata ( xpn_server_comm &comm, const st_xpn_server_wri
     debug_error("[Server="<<serv_name<<"] [XPN_SERVER_OPS] [xpn_server_op_write_mdata] Error open "<<head.path.path<<" "<<strerror(errno));
     goto cleanup_xpn_server_op_write_mdata;
   }
-  ret = m_filesystem->write(fd, &head.mdata, sizeof(head.mdata));
+  ret = m_filesystem->pwrite(fd, &head.mdata, sizeof(head.mdata), 0);
 
   m_filesystem->close(fd); //TODO: think if necesary check error in close
 cleanup_xpn_server_op_write_mdata:

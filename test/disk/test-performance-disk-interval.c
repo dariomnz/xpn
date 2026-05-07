@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #define MAX_BUFFER_SIZE (64 * 1024 * 1024)
 #define INITIAL_SIZE    (4 * 1024 * 1024)
@@ -44,8 +45,7 @@ double get_time_ns() {
     return (double)ts.tv_sec * 1.0e9 + (double)ts.tv_nsec;
 }
 
-
-void update_avg(double* target, double current_value) {
+void update_avg(double *target, double current_value) {
     const double alpha = 0.2;
     if (current_value <= 0) return;
     if ((*target) < 0) {
@@ -82,8 +82,8 @@ int main(int argc, char *argv[]) {
         pthread_create(&input_thread, NULL, thread_read_stdin, NULL);
         pthread_detach(input_thread);
         printf("Running on %d ranks. Commands: 'up' (double), 'down' (half)\n", size);
-        printf("%-12s | %-12s | %-15s | %-12s | %-15s\n", "BUFF_SIZE", "WRITE COUNT",
-               "WRITE BW (MB/s)", "READ COUNT", "READ BW (MB/s)");
+        printf("%-12s | %-12s | %-15s | %-12s | %-15s\n", "BUFF_SIZE", "WRITE COUNT", "WRITE BW (MB/s)", "READ COUNT",
+               "READ BW (MB/s)");
         printf("----------------------------------------------------------------------\n");
     }
 
@@ -120,9 +120,15 @@ int main(int argc, char *argv[]) {
         while (get_time_ns() < end_interval && !signal_stop) {
             lseek(fd, 0, SEEK_SET);
             if (is_write_phase) {
-                if (write(fd, buffer, current_size) < 0) break;
+                if (write(fd, buffer, current_size) < 0) {
+                    perror("write");
+                    break;
+                }
             } else {
-                if (read(fd, buffer, current_size) < 0) break;
+                if (read(fd, buffer, current_size) < 0) {
+                    perror("READ");
+                    break;
+                }
             }
             local_bytes += current_size;
             local_count++;
