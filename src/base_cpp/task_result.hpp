@@ -39,7 +39,7 @@ struct TaskResult {
 
     TaskResult() = default;
     ~TaskResult() {
-        if (state.load() == WAITING) {
+        while (state.load() == WAITING) {
             state.wait(WAITING);
         }
     }
@@ -67,7 +67,7 @@ struct TaskResult {
     bool ready() { return state.load() == READY; }
 
     T get() {
-        if (state.load() == WAITING) {
+        while (state.load() == WAITING) {
             state.wait(WAITING);
         }
         return std::move(value);

@@ -42,6 +42,7 @@ class filesystem {
             r = PROXY(sendfile)(out_fd, in_fd, offset, remaining);
 
             if (r <= 0) {
+                debug_info("sendfile " << r << (r < 0 ? strerror(errno) : ""));
                 if (total_sent == 0) total_sent = r;
                 break;
             }
@@ -64,6 +65,7 @@ class filesystem {
         do {
             r = PROXY(write)(fd, buffer, l);
             if (r <= 0) { /* fail */
+                debug_info("write " << r << (r < 0 ? strerror(errno) : ""));
                 if (ret == 0) ret = r;
                 break;
             }
@@ -89,6 +91,7 @@ class filesystem {
         do {
             r = PROXY(pwrite)(fd, buffer, l, off);
             if (r <= 0) { /* fail */
+                debug_info("pwrite " << r << (r < 0 ? strerror(errno) : ""));
                 if (ret == 0) ret = r;
                 break;
             }
@@ -114,6 +117,7 @@ class filesystem {
         do {
             r = PROXY(read)(fd, buffer, l);
             if (r <= 0) { /* fail */
+                debug_info("read " << r << (r < 0 ? strerror(errno) : ""));
                 if (ret == 0) ret = r;
                 break;
             }
@@ -139,6 +143,7 @@ class filesystem {
         do {
             r = PROXY(pread)(fd, buffer, l, off);
             if (r <= 0) { /* fail */
+                debug_info("pread " << r << (r < 0 ? strerror(errno) : ""));
                 if (ret == 0) ret = r;
                 break;
             }

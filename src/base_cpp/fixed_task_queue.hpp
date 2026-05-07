@@ -85,15 +85,10 @@ class FixedTaskQueue {
         // 2. Launch the new task
         auto& slot = get_free_slot();
 
-        m_worker.launch(
-            [task_func = std::forward<Func>(task_func), this]() mutable {
-                auto result = task_func();
-
-                m_ready.fetch_add(1);
-                m_ready.notify_one();
-                return result;
-            },
-            slot);
+        m_worker.launch(std::move(task_func), slot, [this]() mutable {
+            m_ready.fetch_add(1);
+            m_ready.notify_one();
+        });
         return true;
     }
 

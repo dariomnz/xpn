@@ -26,10 +26,11 @@ namespace XPN
     workers_sequential::workers_sequential() {}
     workers_sequential::~workers_sequential() {}
 
-    void workers_sequential::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result)
+    void workers_sequential::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result, FixedFunction<void(), 8> on_complete)
     {
         result.init();
         result.set_value(task());
+        on_complete();
     }
 
     void workers_sequential::launch_no_future(FixedFunction<void()> task)

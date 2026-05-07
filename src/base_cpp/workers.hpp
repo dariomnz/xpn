@@ -49,7 +49,7 @@ namespace XPN
     public:
         virtual ~workers() = default;
 
-        virtual void launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result) = 0;
+        virtual void launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result, FixedFunction<void(), 8> on_complete) = 0;
         virtual void launch_no_future(FixedFunction<void()> task) = 0;
         virtual void wait_all() = 0;
         virtual uint32_t size() const = 0;

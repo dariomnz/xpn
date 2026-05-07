@@ -41,7 +41,7 @@ namespace XPN
         return m_num_threads;
     }
 
-    void workers_on_demand::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result)
+    void workers_on_demand::launch(FixedFunction<WorkerResult()> task, TaskResult<WorkerResult>& result, FixedFunction<void(), 8> on_complete)
     {
         {
             std::unique_lock<std::mutex> lock(m_wait_mutex);
@@ -53,7 +53,7 @@ namespace XPN
             m_wait++;
         }
         result.init();
-        auto wrapper = [this, task = std::move(task), &result]() mutable {
+        auto wrapper = [this, task = std::move(task), on_complete = std::move(on_complete), &result]() mutable {
             auto task_result = task(); 
 
             {
@@ -66,6 +66,7 @@ namespace XPN
             }
 
             result.set_value(std::move(task_result));
+            on_complete();
         };
 
         std::thread t(std::move(wrapper));
