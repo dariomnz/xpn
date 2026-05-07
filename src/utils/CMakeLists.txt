@@ -5,6 +5,7 @@ set(UTILS_LIST_CPP
 	xpn_server_monitor
 	xpn_server_flush
 	xpn_server_preload
+	sparse_map
 )
 
 if(ENABLE_MPI_SERVER)
