@@ -36,6 +36,7 @@ namespace XPN
       // For unique rank
       static int64_t counter = 0;
       server_rank = counter++;
+      MPI_Comm_remote_size(comm, &m_size);
     }
     ~mpi_server_comm() override {}
 
@@ -46,9 +47,11 @@ namespace XPN
     int64_t writev_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) override;
 
     int64_t get_rank() override { return server_rank; }
+    int64_t get_size() override { return m_size; }
    public:
     MPI_Comm m_comm;
     int64_t server_rank;
+    int m_size;
   };
   
   class mpi_server_control_comm : public xpn_server_control_comm

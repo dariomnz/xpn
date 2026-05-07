@@ -41,6 +41,7 @@ namespace XPN
     virtual int64_t writev_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) = 0;
 
     virtual int64_t get_rank() = 0;
+    virtual int64_t get_size() = 0;
   };
 
   class xpn_server_control_comm

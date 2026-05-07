@@ -43,6 +43,7 @@ namespace XPN
     int64_t writev_data(const iovec *iov, int64_t count, int rank_client_id, int tag_client_id) override;
 
     int64_t get_rank() override { return m_comm; }
+    int64_t get_size() override { return 1; }
   public:
     int m_comm;
   };
