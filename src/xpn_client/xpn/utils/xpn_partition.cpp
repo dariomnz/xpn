@@ -26,18 +26,18 @@
 
 namespace XPN
 {
-        xpn_partition::xpn_partition(std::string_view name, int replication_level, uint64_t block_size) :
-            m_name(name), m_replication_level(replication_level), m_block_size(block_size)
+        xpn_partition::xpn_partition(std::string_view name, int replication_level, uint64_t block_size, bool compressed) :
+            m_name(name), m_replication_level(replication_level), m_block_size(block_size), m_compressed(compressed)
         {
         }
 
-        int xpn_partition::init_server(std::string_view url)
+        int xpn_partition::init_server(std::string_view url, uint32_t num_servers)
         {
             XPN_DEBUG_BEGIN;
             int res = 0;
             int index = m_data_serv.size();
 
-            auto& server = m_data_serv.emplace_back(nfi_server::Create(url));
+            auto& server = m_data_serv.emplace_back(nfi_server::Create(url, num_servers));
 
             if(nfi_server::is_local_server(server->m_server)){
                 m_local_serv = index;

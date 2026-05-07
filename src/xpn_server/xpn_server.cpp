@@ -101,7 +101,9 @@ void xpn_server::dispatcher ( std::shared_ptr<xpn_server_comm> comm )
         std::unique_lock l(m_clients_mutex);
         m_clients.erase(comm->get_rank());
     }
+
     m_control_comm->disconnect(comm);
+    m_num_clients -= comm->get_size();
 
     debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_dispatcher] End");
 }
@@ -150,6 +152,7 @@ void xpn_server::one_dispatcher () {
             {
                 std::unique_lock l(m_clients_mutex);
                 m_clients.erase(rank_client_id);
+                m_num_clients -= 1;
                 m_clients_cv.notify_all();
                 debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_one_dispatcher] Currently "<<m_clients.size()<<" clients");
             }
@@ -248,6 +251,7 @@ void xpn_server::accept ( int connection_socket )
     {
         std::unique_lock l(m_clients_mutex);
         m_clients.emplace(comm->get_rank(), comm);
+        m_num_clients += comm->get_size();
         debug_info("[TH_ID="<<std::this_thread::get_id()<<"] [XPN_SERVER] [xpn_server_up] notify new client "<<m_clients.size());
         m_clients_cv.notify_all();
     }

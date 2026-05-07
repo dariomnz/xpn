@@ -390,10 +390,11 @@ namespace XPN
                     break;
                 }
 
-                m_actual_index = (m_actual_index + 1) % window_size;
-                m_window_stats[m_actual_index] = m_stats - m_previous;
-                m_window_stats[m_actual_index].set_time(std::chrono::duration_cast<std::chrono::microseconds>(window_time).count());
+                int next_index = (m_actual_index + 1) % window_size;
+                m_window_stats[next_index] = m_stats - m_previous;
+                m_window_stats[next_index].set_time(std::chrono::duration_cast<std::chrono::microseconds>(window_time).count());
                 m_previous = m_stats;
+                m_actual_index = next_index;
 
                 if (csv_file.is_open()){
                     csv_file << m_window_stats[m_actual_index].to_csv();

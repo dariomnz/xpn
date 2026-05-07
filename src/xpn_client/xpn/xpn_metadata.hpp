@@ -55,6 +55,7 @@ namespace XPN
             int32_t  distribution_policy = 0;                   // Distribution policy of blocks, default: round-robin
             uint64_t block_size = 0;                            // Size of block used
             uint64_t file_size = 0;                             // Size of the file
+            uint8_t  compressed = 0;                            // Compressed in disk
             int32_t  data_nserv[MAX_RECONSTURCTIONS] = {0};     // Array of number of servers to reconstruct
             int32_t  offsets[MAX_RECONSTURCTIONS] = {0};        // Array indicating the block where new server configuration starts
             

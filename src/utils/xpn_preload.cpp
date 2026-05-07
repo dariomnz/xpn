@@ -135,7 +135,7 @@ void preload(const char* src_root, const char* dest_root, int rank, int size, wo
     auto result_handler = []([[maybe_unused]] const WorkerResult& r) { return true; };
     auto tasks = FixedTaskQueueFactory<1024>::Create(pool, result_handler);
 
-    xpn_partition dummy_part("xpn", replication_level, blocksize);
+    xpn_partition dummy_part("xpn", replication_level, blocksize, false);
     dummy_part.m_data_serv.resize(size);
 
     if (rank == 0) {

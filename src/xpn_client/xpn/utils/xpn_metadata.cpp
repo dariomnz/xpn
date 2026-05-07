@@ -39,6 +39,7 @@ namespace XPN
         version             = VERSION;
         type                = 0;
         block_size          = mdata.m_file.m_part.m_block_size;
+        compressed          = mdata.m_file.m_part.m_compressed;
         replication_level   = mdata.m_file.m_part.m_replication_level;
         first_node          = mdata.master_file();
         distribution_policy = DISTRIBUTION_ROUND_ROBIN;

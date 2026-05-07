@@ -273,7 +273,7 @@ void xpn_server::op_flush(xpn_server_comm &comm, [[maybe_unused]] const st_xpn_s
 
     int xpn_base_path_len = strlen(head.paths.path1());
     std::atomic<int64_t> g_size_copied{0};
-    xpn_partition dummy_part("xpn", conf.partitions[0].replication_level, conf.partitions[0].bsize);
+    xpn_partition dummy_part("xpn", conf.partitions[0].replication_level, conf.partitions[0].bsize, conf.partitions[0].compressed);
     dummy_part.m_data_serv.resize(size);
 
     flush(&group, xpn_base_path_len, head.paths.path1(), head.paths.path2(), rank, *m_worker1, dummy_part,
@@ -373,13 +373,13 @@ WorkerResult preload_file_blocks_task(std::unique_ptr<PreloadEntry> entry, xpn_p
 }
 
 void preload(lfi_group *group, int xpn_base_path_len, const char *src_root, const char *dest_root, int rank, int size,
-             workers &pool, int blocksize, int replication_level, std::atomic<int64_t> &g_size_copied) {
+             workers &pool, int blocksize, int replication_level, bool compressed, std::atomic<int64_t> &g_size_copied) {
     debug_info(group << " " << xpn_base_path_len << " " << src_root << " " << dest_root << " " << rank << " " << size
                      << " " << blocksize << " " << replication_level << " " << g_size_copied.load());
     auto result_handler = []([[maybe_unused]] const WorkerResult &r) { return true; };
     auto tasks = FixedTaskQueueFactory<1024>::Create(pool, result_handler);
 
-    xpn_partition dummy_part("xpn", replication_level, blocksize);
+    xpn_partition dummy_part("xpn", replication_level, blocksize, compressed);
     dummy_part.m_data_serv.resize(size);
 
     if (rank == 0) {
@@ -494,7 +494,7 @@ void xpn_server::op_preload(xpn_server_comm &comm, [[maybe_unused]] const st_xpn
     int xpn_base_path_len = strlen(head.paths.path2());
     std::atomic<int64_t> g_size_copied{0};
     preload(&group, xpn_base_path_len, head.paths.path1(), head.paths.path2(), rank, size, *m_worker1,
-            conf.partitions[0].bsize, conf.partitions[0].replication_level, g_size_copied);
+            conf.partitions[0].bsize, conf.partitions[0].replication_level, conf.partitions[0].compressed, g_size_copied);
     double total_time = lfi_time(&group) - start_time;
     int64_t total_size_copied = g_size_copied.load();
     debug_info("Local data moved: " << format_bytes(total_size_copied) << " ("

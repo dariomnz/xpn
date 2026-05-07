@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include "base_cpp/stat_tracker.hpp"
 #include "filesystem/xpn_server_filesystem.hpp"
 #include "xpn_server_params.hpp"
 #include "xpn_server_comm.hpp"
@@ -61,6 +62,7 @@ namespace XPN
         bool m_disconnect = false;
         std::unordered_map<int64_t, std::shared_ptr<xpn_server_comm>> m_clients = {};
         std::mutex m_clients_mutex = {};
+        std::atomic<uint32_t> m_num_clients;
         std::condition_variable m_clients_cv = {};
 
         queue_pool<xpn_server_msg> msg_pool;

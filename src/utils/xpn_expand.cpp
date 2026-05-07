@@ -66,13 +66,13 @@
       printf("%s\n", entry);
     }
 
-    xpn_partition old_part("xpn", 0, 0);
+    xpn_partition old_part("xpn", 0, 0, false);
     old_part.m_data_serv.resize(last_size);
     std::string aux_str = &entry[xpn_path_len];
     xpn_file old_file(aux_str, old_part);
     old_file.m_mdata.m_data.fill(old_file.m_mdata);
 
-    xpn_partition new_part("xpn", 0, 0);
+    xpn_partition new_part("xpn", 0, 0, false);
     new_part.m_data_serv.resize(size);
     xpn_file new_file(aux_str, new_part);
     new_file.m_mdata.m_data.fill(new_file.m_mdata);
@@ -179,7 +179,7 @@
     char path [PATH_MAX];
     int buff_coord = 1;
     
-    xpn_partition part("xpn", 0, 0);
+    xpn_partition part("xpn", 0, 0, false);
     part.m_data_serv.resize(last_size);
     std::string aux_str = &dir_name[xpn_path_len];
     xpn_file file(aux_str, part);

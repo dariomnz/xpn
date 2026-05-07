@@ -62,7 +62,7 @@ int xpn_api::init() {
         // Emplace without creation of temp xpn_partition
         auto [key, inserted] =
             m_partitions.emplace(std::piecewise_construct, std::forward_as_tuple(part.partition_name),
-                                 std::forward_as_tuple(part.partition_name, part.replication_level, part.bsize));
+                                 std::forward_as_tuple(part.partition_name, part.replication_level, part.bsize, part.compressed));
         if (!inserted) {
             std::cerr << "Error: cannot create xpn_partition" << std::endl;
             std::raise(SIGTERM);
@@ -70,7 +70,7 @@ int xpn_api::init() {
         auto &xpn_part = key->second;
         int server_with_error = 0;
         for (const auto &srv_url : part.server_urls) {
-            res = xpn_part.init_server(srv_url);
+            res = xpn_part.init_server(srv_url, part.server_urls.size());
         }
 
         for (const auto &srv : xpn_part.m_data_serv) {

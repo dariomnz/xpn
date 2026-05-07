@@ -86,6 +86,7 @@ class xpn_controller {
     const args::option option_hostfile          {"-f", "--hostfile"         , "Hostfile with one line per host"                 , XPN::args::option::opt_type::value};
     const args::option option_hostlist          {"-l", "--hostlist"         , "List with the hosts separated by ','"            , XPN::args::option::opt_type::value};
     const args::option option_bsize             {"-b", "--block_size"       , "Block size to use in the XPN partition"          , XPN::args::option::opt_type::value};
+    const args::option option_compressed        {"", "--compressed"         , "Activate compression in the XPN partition"       , XPN::args::option::opt_type::flag};
     const args::option option_replication_level {"-r", "--replication_level", "Replication level to use in the XPN partition"   , XPN::args::option::opt_type::value};
     const args::option option_server_type       {"-t", "--server_type"      , "Server type: mpi, fabric, sck"                   , XPN::args::option::opt_type::value};
     const args::option option_storage_path      {"-p", "--storage_path"     , "Storage path for the servers in local storage"   , XPN::args::option::opt_type::value};
@@ -97,6 +98,7 @@ class xpn_controller {
         option_hostfile,
         option_hostlist,
         option_bsize,
+        option_compressed,
         option_replication_level,
         option_server_type,
         option_storage_path,
@@ -113,7 +115,7 @@ class xpn_controller {
     int run();
     int local_mk_config();
     int mk_config(std::string_view hostfile, std::string_view hostlist, const char* conffile, std::string_view bsize,
-                  std::string_view replication_level, std::string_view server_type,
+                  std::string_view compressed, std::string_view replication_level, std::string_view server_type,
                   std::string_view storage_path);
     int update_config(const std::vector<std::string_view>& new_hostlist);
     int start_servers(bool await, int server_cores, bool debug);

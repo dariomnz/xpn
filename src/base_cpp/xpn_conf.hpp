@@ -45,11 +45,13 @@ namespace XPN
         constexpr const char * TAG_PARTITION_NAME = "partition_name";
         constexpr const char * TAG_REPLICATION_LEVEL = "replication_level";
         constexpr const char * TAG_BLOCKSIZE = "bsize";
+        constexpr const char * TAG_COMPRESSED = "compressed";
         constexpr const char * TAG_CONTROLER_URL = "controler_url";
         constexpr const char * TAG_SERVER_URL = "server_url";
         constexpr const char * DEFAULT_CONTROLER_URL = "localhost";
         constexpr const int DEFAULT_REPLICATION_LEVEL = 0;
         constexpr const int DEFAULT_BLOCKSIZE = 512 * 1024;
+        constexpr const bool DEFAULT_COMPRESSED = false;
         constexpr const char * DEFAULT_SERVER_TYPE = "mpi";
         constexpr const char * DEFAULT_STORAGE_PATH = "/tmp/expand/data";
         constexpr const char * DEFAULT_PARTITION_NAME= "xpn";
@@ -63,6 +65,7 @@ namespace XPN
             GrowFixedString<32> partition_name = XPN_CONF::DEFAULT_PARTITION_NAME;
             int bsize = XPN_CONF::DEFAULT_BLOCKSIZE;
             int replication_level = XPN_CONF::DEFAULT_REPLICATION_LEVEL;
+            bool compressed = XPN_CONF::DEFAULT_COMPRESSED;
             FixedString<HOST_NAME_MAX> controler_url = XPN_CONF::DEFAULT_CONTROLER_URL;
             std::vector<GrowFixedString<64>> server_urls;
 
@@ -72,6 +75,7 @@ namespace XPN
                 out << XPN_CONF::TAG_PARTITION << std::endl;
                 out << XPN_CONF::TAG_PARTITION_NAME << " = " << partition_name << std::endl;
                 out << XPN_CONF::TAG_BLOCKSIZE << " = " << bsize << std::endl;
+                out << XPN_CONF::TAG_COMPRESSED << " = " << (compressed?"true":"false") << std::endl;
                 out << XPN_CONF::TAG_CONTROLER_URL << " = " << controler_url << std::endl;
                 out << XPN_CONF::TAG_REPLICATION_LEVEL << " = " << replication_level << std::endl;
                 for (auto &srv : server_urls)

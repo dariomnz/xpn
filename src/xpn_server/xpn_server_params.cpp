@@ -80,9 +80,7 @@ void xpn_server_params::show(std::ostream& os) {
         os << " █\tproxy mode: \ton\n";
     } else if (fs_mode == filesystem_mode::memory) {
         os << " █\tmemory mode: \ton\n";
-    } else if (fs_mode == filesystem_mode::lz4_disk) {
-        os << " █\tlz4 mode: \ton\n";
-    }
+    } 
     if (mqtt_qos != DEFAULT_XPN_SERVER_MQTT_QOS || srv_type == server_type::MQTT) {
         os << " █\tmqtt qos: \t" << mqtt_qos << "\n";
     }
@@ -144,8 +142,6 @@ xpn_server_params::xpn_server_params(int _argc, char *_argv[]) {
             await_stop = 1;
         } else if (arg == "--memory") {
             fs_mode = filesystem_mode::memory;
-        } else if (arg == "--lz4") {
-            fs_mode = filesystem_mode::lz4_disk;
         } else if (arg == "-x" || arg == "--proxy") {
             fs_mode = filesystem_mode::xpn;
         } else if (arg == "-p" || arg == "--port") {

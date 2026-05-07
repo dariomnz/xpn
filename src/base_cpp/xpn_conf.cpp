@@ -121,6 +121,8 @@ xpn_conf::xpn_conf() {
                 partitions[actual_index].partition_name = value;
             } else if (key == XPN_CONF::TAG_CONTROLER_URL) {
                 partitions[actual_index].controler_url = value;
+            } else if (key == XPN_CONF::TAG_COMPRESSED) {
+                partitions[actual_index].compressed = value == "true";
             } else if (key == XPN_CONF::TAG_BLOCKSIZE) {
                 auto res = getSizeFactor(value);
                 if (res < 0) {
