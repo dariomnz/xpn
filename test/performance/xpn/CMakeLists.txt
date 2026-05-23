@@ -23,3 +23,13 @@ foreach (test ${TEST_LIST})
     target_link_libraries(${test} xpn)
     install(TARGETS ${test} RUNTIME DESTINATION test/performance/xpn)
 endforeach (test)
+
+if (ENABLE_MPI_SERVER)
+    link_libraries("${MPI_LIBRARY}")
+    include_directories("${MPI_INCLUDE_DIR}")
+
+    set(MPI_TEST "mpi-open-w-r-close")
+    add_executable(${MPI_TEST} ${MPI_TEST}.cpp)
+    target_link_libraries(${MPI_TEST} PRIVATE xpn)
+    install(TARGETS ${MPI_TEST} RUNTIME DESTINATION test/performance/xpn)
+endif()
