@@ -35,16 +35,29 @@ namespace XPN
             return -1;
         }
         
-        auto& server = file.m_part.m_data_serv[file.m_mdata.master_file()];
+        int master = file.m_mdata.master_file();
+        if (master < 0) {
+            XPN_DEBUG_END_CUSTOM(file.m_path);
+            return master;
+        }
 
-        res = server->nfi_getattr(file.m_path, *sb);
+        while (master >= 0) {
+            res = file.m_part.m_data_serv[master]->nfi_getattr(file.m_path, *sb);
+            XPN_DEBUG("Stat from serv "<<master<<" res "<<res);
+            if (res < 0 && file.m_part.m_data_serv[master]->m_error < 0) {
+                master = file.m_mdata.master_file();
+                XPN_DEBUG("Retry stat in "<<master);
+                continue;
+            }
+            break;
+        }
 
         // Update file_size
         if (S_ISREG(sb->st_mode)){
             sb->st_size = file.m_mdata.m_data.file_size;
         }
 
-        XPN_DEBUG_END;
+        XPN_DEBUG_END_CUSTOM(file.m_path);
         return res;
     }
 
@@ -141,7 +154,12 @@ namespace XPN
         XPN_DEBUG_BEGIN_CUSTOM(file.m_path);
         int res = 0;
 
-        auto& server = file.m_part.m_data_serv[file.m_mdata.master_file()];
+        int master_file = file.m_mdata.master_file();
+        if (master_file < 0) {
+            XPN_DEBUG_END_CUSTOM(file.m_path);
+            return master_file;
+        }
+        auto& server = file.m_part.m_data_serv[master_file];
         
         res = server->nfi_statvfs(file.m_path, *buf);
 
@@ -161,8 +179,8 @@ namespace XPN
         std::mutex buff_mutex;
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
-            if (static_cast<int>(i) == file.m_mdata.master_file()) continue;
-            if (file.m_part.m_data_serv[i]->m_error == -1) continue;
+            if (static_cast<int>(i) == master_file) continue;
+            if (file.m_part.m_data_serv[i]->m_error < 0) continue;
             tasks.launch([i, &file, &buf, &buff_mutex](){
                 struct ::statvfs aux_buf;
                 int res = file.m_part.m_data_serv[i]->nfi_statvfs(file.m_path, aux_buf);

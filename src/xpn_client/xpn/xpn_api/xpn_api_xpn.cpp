@@ -141,7 +141,7 @@ int xpn_api::mark_error_server(int index) {
     XPN_DEBUG_BEGIN;
     for (auto &[key, part] : m_partitions) {
         if (index < static_cast<int>(part.m_data_serv.size())) {
-            part.m_data_serv[index]->m_error = -1;
+            part.m_data_serv[index]->m_error = nfi_server::ERROR;
             res = 0;
         }
     }
@@ -223,6 +223,7 @@ int xpn_api::flush_preload(const char *path, bool isFlush) {
     auto &part = m_partitions.begin()->second;
     int serv_done = 0;
     for (auto &&serv : part.m_data_serv) {
+        if (serv->m_error < 0) continue;
         if (isFlush) {
             res = serv->nfi_flush(path);
         } else {
@@ -236,6 +237,8 @@ int xpn_api::flush_preload(const char *path, bool isFlush) {
 
     int error = 0;
     for (int i = 0; i < serv_done; i++) {
+        if (part.m_data_serv[i]->m_error < 0) continue;
+
         res = part.m_data_serv[i]->nfi_response();
         if (res < 0) {
             error = res;
@@ -258,6 +261,7 @@ int xpn_api::checkpoint(const char *path) {
     auto &part = m_partitions.begin()->second;
     int serv_done = 0;
     for (auto &&serv : part.m_data_serv) {
+        if (serv->m_error < 0) continue;
         res = serv->nfi_checkpoint(path);
         if (res < 0) {
             break;
@@ -267,6 +271,7 @@ int xpn_api::checkpoint(const char *path) {
 
     int error = 0;
     for (int i = 0; i < serv_done; i++) {
+        if (part.m_data_serv[i]->m_error < 0) continue;
         res = part.m_data_serv[i]->nfi_response();
         if (res < 0) {
             error = res;

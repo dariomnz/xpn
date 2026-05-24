@@ -97,7 +97,7 @@ namespace XPN
         }
 
         if (m_comm == nullptr){
-            m_error = -1;
+            m_error = ERROR;
             res = -1;
         }
 

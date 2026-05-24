@@ -155,7 +155,7 @@ void nfi_sck_server_control_comm::disconnect(std::unique_ptr<nfi_xpn_server_comm
 
 int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
     XPN_PROFILE_FUNCTION();
-    int ret;
+    int64_t ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] >> Begin");
 
@@ -166,20 +166,20 @@ int64_t nfi_sck_server_comm::write_operation(xpn_server_msg& msg) {
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] Write operation send tag "<< msg.tag);
 
     ret = socket::send(m_socket, &msg, msg.get_size());
-    if (ret < 0) {
+    if (ret < 0 || ret != msg.get_size()) {
         debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] ERROR: socket::send < 0 : "<< ret);
         return -1;
     }
 
-    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] << End");
+    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] << End = "<<ret);
 
     // Return OK
-    return 0;
+    return ret;
 }
 
 int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size, [[maybe_unused]] int64_t tag) {
     XPN_PROFILE_FUNCTION();
-    int ret;
+    int64_t ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] >> Begin");
 
@@ -196,20 +196,20 @@ int64_t nfi_sck_server_comm::write_data(const void *data, int64_t size, [[maybe_
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] Write data size "<<size);
 
     ret = socket::send(m_socket, data, size);
-    if (ret < 0) {
-        printf("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] ERROR: MPI_Send fails");
-        size = 0;
+    if (ret < 0 || ret != size) {
+        debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] ERROR: socket::send < 0 : "<< ret);
+        return -1;
     }
 
-    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] << End");
+    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_data] << End = "<<ret);
 
     // Return bytes written
-    return size;
+    return ret;
 }
 
 int64_t nfi_sck_server_comm::read_data(void *data, int64_t size, [[maybe_unused]] int64_t tag) {
     XPN_PROFILE_FUNCTION();
-    int ret;
+    int64_t ret;
 
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] >> Begin");
 
@@ -226,15 +226,15 @@ int64_t nfi_sck_server_comm::read_data(void *data, int64_t size, [[maybe_unused]
     debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] Read data size "<<size);
 
     ret = socket::recv(m_socket, data, size);
-    if (ret < 0) {
-        printf("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] ERROR: MPI_Recv fails");
-        size = 0;
+    if (ret < 0 || ret != size) {
+        debug_error("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_write_operation] ERROR: socket::recv < 0 : "<< ret);
+        return -1;
     }
 
-    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] << End");
+    debug_info("[NFI_SCK_SERVER_COMM] [nfi_sck_server_comm_read_data] << End = "<<ret);
 
     // Return bytes read
-    return size;
+    return ret;
 }
 
 int64_t nfi_sck_server_comm::writev_data([[maybe_unused]] const iovec *iov, [[maybe_unused]] int64_t count, [[maybe_unused]] int64_t tag) {

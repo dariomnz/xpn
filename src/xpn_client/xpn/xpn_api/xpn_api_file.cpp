@@ -93,11 +93,16 @@ namespace XPN
 
 
         if ((O_CREAT == (flags & O_CREAT))) {
+            constexpr int replica_error = -256;
+            int srvs_with_error = 0;
             auto result_handler = [&](const WorkerResult& r) {
                 if (r.result < 0) {
                     res = r.result;
                     errno = r.errorno;
-                    return false; // Stop
+                    if (r.result != replica_error) {
+                        return false; // Exit
+                    }
+                    srvs_with_error++;
                 }
                 return true; // Continue
             };
@@ -108,6 +113,7 @@ namespace XPN
                 auto& serv = file->m_part.m_data_serv[i];
                 bool ok = tasks.launch([i, &serv, &file, flags, mode](){
                         int res = serv->nfi_open(file->m_path, flags, mode, file->m_data_vfh[i]);
+                        if (res < 0 && serv->m_error < 0) res = replica_error;
                         return WorkerResult(res);
                 });
                 if (!ok) {
@@ -116,7 +122,7 @@ namespace XPN
                 }
             }
 
-            if (!tasks.wait_remaining()) {
+            if (!tasks.wait_remaining() || srvs_with_error > file->m_part.m_replication_level) {
                 XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
                 return res;
             }
@@ -126,14 +132,22 @@ namespace XPN
             }
         }else{
             int master_file = file->m_mdata.master_file();
-            if ((O_DIRECTORY == (flags & O_DIRECTORY))){
-                res = file->m_part.m_data_serv[master_file]->nfi_opendir(file->m_path, file->m_data_vfh[master_file]);
-            }else{
-                res = file->m_part.m_data_serv[master_file]->nfi_open(file->m_path, flags, mode, file->m_data_vfh[master_file]);
-            }
-            if (res < 0) {
-                XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
-                return res;
+            // Retry when replication is enabled
+            while (master_file >= 0) {
+                if ((O_DIRECTORY == (flags & O_DIRECTORY))){
+                    res = file->m_part.m_data_serv[master_file]->nfi_opendir(file->m_path, file->m_data_vfh[master_file]);
+                }else{
+                    res = file->m_part.m_data_serv[master_file]->nfi_open(file->m_path, flags, mode, file->m_data_vfh[master_file]);
+                }
+                if (res < 0) {
+                    if (file->m_part.m_data_serv[master_file]->m_error < 0) {
+                        master_file = file->m_mdata.master_file();
+                        if (master_file >= 0) continue;
+                    }
+                    XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
+                    return res;
+                }
+                break;
             }
         }
 
@@ -183,9 +197,11 @@ namespace XPN
             };
             FixedTaskQueue tasks(*m_worker, result_handler);
             for (uint64_t i = 0; i < file->m_data_vfh.size(); i++) {
+                if (file->m_part.m_data_serv[i]->m_error < 0) continue;
                 if (file->m_data_vfh[i].is_file() && file->m_data_vfh[i].as.file.fd != -1) {
                     tasks.launch([i, &file]() { 
                         int res = file->m_part.m_data_serv[i]->nfi_close(file->m_path, file->m_data_vfh[i]); 
+                        if (file->m_part.m_data_serv[i]->m_error < 0) return WorkerResult(0);
                         return WorkerResult(res);
                     });
                 }
@@ -234,10 +250,12 @@ namespace XPN
         FixedTaskQueue tasks(*m_worker, result_handler);
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
+            if (file.m_part.m_data_serv[i]->m_error < 0) continue;
             if (file.exist_in_serv(i)){
                 tasks.launch([i, &file](){
                     // Always wait and not async because it can fail in other ways
                     int res = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                    if (file.m_part.m_data_serv[i]->m_error < 0) return WorkerResult(0);
                     return WorkerResult(res);
                     // v_res[i] = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
                 });
@@ -283,28 +301,36 @@ namespace XPN
             return res;
         }
 
-        
+        constexpr int error_server = -256;
+        int srvs_with_error = 0;
         auto result_handler = [&](const WorkerResult& r) {
             if (r.result < 0) {
-                res = r.result;
+                if (r.result == error_server) {
+                    srvs_with_error++;
+                    return true; // Continue
+                }
                 errno = r.errorno;
+                srvs_with_error++;
             }
             return true; // Continue
         };
         FixedTaskQueue tasks(*m_worker, result_handler);
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
+            if (file.m_part.m_data_serv[i]->m_error < 0) continue;
             if (file.exist_in_serv(i)){
                 if (!new_file.exist_in_serv(i)){
                     XPN_DEBUG("Remove in server "<<i);
                     tasks.launch([i, &file](){
                         int res = file.m_part.m_data_serv[i]->nfi_remove(file.m_path, false);
+                        if (file.m_part.m_data_serv[i]->m_error < 0) return WorkerResult(error_server);
                         return WorkerResult(res);
                     });
                 }else{
                     XPN_DEBUG("Rename in server "<<i);
                     tasks.launch([i, &file, &new_file](){
                         int res = file.m_part.m_data_serv[i]->nfi_rename(file.m_path, new_file.m_path);
+                        if (file.m_part.m_data_serv[i]->m_error < 0) return WorkerResult(error_server);
                         return WorkerResult(res);
                     });
                 }
@@ -312,6 +338,11 @@ namespace XPN
         }
 
         tasks.wait_remaining();
+
+        // If fail more than replication is an error in the operation
+        if (srvs_with_error > file.m_part.m_replication_level) {
+            res = -1;
+        }
 
         if (res >= 0){
             new_file.m_mdata.m_data = file.m_mdata.m_data;

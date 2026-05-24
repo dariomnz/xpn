@@ -334,7 +334,7 @@ WorkerResult preload_file_blocks_task(std::unique_ptr<PreloadEntry> entry, xpn_p
     int local_server;
 
     while (offset_src < static_cast<int64_t>(entry->file_size)) {
-        for (int i = 0; i <= dummy_part.m_replication_level; i++) {
+        for (int i = 0; i <= dummy_part.m_replication_level+1; i++) {
             file.map_offset_mdata(offset_src, i, local_offset, local_server);
             if (local_server == rank) {
                 off64_t src_pos = offset_src;
@@ -353,7 +353,7 @@ WorkerResult preload_file_blocks_task(std::unique_ptr<PreloadEntry> entry, xpn_p
 
     // Write metadata if this rank is one of the replica nodes for metadata
     bool write_mdata = false;
-    for (int i = 0; i <= dummy_part.m_replication_level; i++) {
+    for (int i = 0; i <= dummy_part.m_replication_level+1; i++) {
         int aux_serv = (file.m_mdata.m_data.first_node + i) % size;
         if (aux_serv == rank) {
             write_mdata = true;

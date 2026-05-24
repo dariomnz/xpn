@@ -81,7 +81,7 @@ int main() {
             "file://localhost/" + tmp_dir + "/xpn2",
             "file://localhost/" + tmp_dir + "/xpn3",
         };
-        part.bsize = 1024;
+        part.bsize = 9 * 1024;
         auto cleanup_conf = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
         XPN_scope xpn;
         run_test();
@@ -91,7 +91,7 @@ int main() {
             "file://localhost/" + tmp_dir + "/xpn1",
             "file://localhost/" + tmp_dir + "/xpn2",
         };
-        part.bsize = 1024 * 1024;
+        part.bsize = 512 * 1024;
         auto cleanup_conf = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
         XPN_scope xpn;
         run_test();
@@ -101,7 +101,7 @@ int main() {
         part.server_urls = {
             "sck_server://localhost/" + tmp_dir + "/xpn1",
         };
-        part.bsize = 1024 * 1024;
+        part.bsize = 512 * 1024;
         auto cleanup_conf = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
         auto cleanup_srvs = setup::start_srvs(part);
         XPN_scope xpn;
@@ -113,7 +113,7 @@ int main() {
             "sck_server://localhost:3457/" + tmp_dir + "/xpn2",
             "sck_server://localhost:3458/" + tmp_dir + "/xpn3",
         };
-        part.bsize = 1024 * 1024;
+        part.bsize = 512 * 1024;
         auto cleanup_conf = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
         auto cleanup_srvs = setup::start_srvs(part);
         XPN_scope xpn;
@@ -125,7 +125,7 @@ int main() {
             "sck_server://localhost:3457/" + tmp_dir + "/xpn2",
             "sck_server://localhost:3458/" + tmp_dir + "/xpn3",
         };
-        part.bsize = 1024 * 1024;
+        part.bsize = 512 * 1024;
         auto cleanup_conf = setup::create_xpn_conf(tmp_dir + "/xpn.conf", part);
         auto cleanup_srvs = setup::start_srvs(part);
         XPN_scope xpn;

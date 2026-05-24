@@ -192,6 +192,7 @@ int64_t nfi_xpn_server::nfi_read_v1(const xpn_file &file, const xpn_fh &fh, char
         }
 
         if (m_comm->read_data(&req, sizeof(req)) < 0) {
+            m_error = ERROR_COMM;
             debug_error("[SERV_ID=" << m_server << "] [NFI_XPN] [nfi_xpn_server_read] ERROR: nfi_xpn_server_comm_read_data fails");
             return -1;
         }
@@ -205,7 +206,10 @@ int64_t nfi_xpn_server::nfi_read_v1(const xpn_file &file, const xpn_fh &fh, char
         if (req.size > 0) {
             if (req.compressed_size > 0) {
                 char compressed_data[LZ4_COMPRESSBOUND(MAX_BUFFER_SIZE)];
-                if (m_comm->read_data(compressed_data, req.compressed_size) < 0) return -1;
+                if (m_comm->read_data(compressed_data, req.compressed_size) < 0) {
+                  m_error = ERROR_COMM;
+                  return -1;
+                }
                 
                 if (xpn_compression != 0) decom_t1 = std::chrono::high_resolution_clock::now();
                 
@@ -227,7 +231,10 @@ int64_t nfi_xpn_server::nfi_read_v1(const xpn_file &file, const xpn_fh &fh, char
                         std::chrono::duration_cast<std::chrono::microseconds>(decom_t2 - decom_t1));
                 }
             } else {
-                if (m_comm->read_data(buffer + (size - remaining), req.size) < 0) return -1;
+                if (m_comm->read_data(buffer + (size - remaining), req.size) < 0) {
+                  m_error = ERROR_COMM;
+                  return -1;
+                }
                 if (xpn_compression != 0) net_t2 = std::chrono::high_resolution_clock::now();
                 if (xpn_compression != 0) {
                     m_read_compressor.update_metrics(
@@ -303,7 +310,10 @@ int64_t nfi_xpn_server::nfi_read_v2(const xpn_file& file, const xpn_fh &fh, char
                 {.iov_base = &req, .iov_len = sizeof(req)},
                 {.iov_base = compressed_data, .iov_len = sizeof(compressed_data)}
             };
-            if (m_comm->readv_data(iovs, 2) < 0) return -1;
+            if (m_comm->readv_data(iovs, 2) < 0) {
+              m_error = ERROR_COMM;
+              return -1;
+            }
 
             if (xpn_compression != 0) decom_t1 = std::chrono::high_resolution_clock::now();
 
@@ -329,7 +339,10 @@ int64_t nfi_xpn_server::nfi_read_v2(const xpn_file& file, const xpn_fh &fh, char
                 {.iov_base = &req, .iov_len = sizeof(req)},
                 {.iov_base = buffer + (size - remaining), .iov_len = chunk_size}
             };
-            if (m_comm->readv_data(iovs, 2) < 0) return -1;
+            if (m_comm->readv_data(iovs, 2) < 0) {
+              m_error = ERROR_COMM;
+              return -1;
+            }
             if (xpn_compression != 0) {
                 net_t2 = std::chrono::high_resolution_clock::now();
                 m_read_compressor.update_metrics(chunk_size, req.num_clients,
@@ -440,6 +453,7 @@ int64_t nfi_xpn_server::nfi_write_v1(const xpn_file &file, const xpn_fh &fh, con
         }
 
         if (ret_write < 0 || m_comm->read_data(&req, sizeof(req)) < 0) {
+            m_error = ERROR_COMM;
             debug_error("[SERV_ID=" << m_server << "] [NFI_XPN] [nfi_xpn_server_write] ERROR: comm error");
             return -1;
         }
@@ -543,8 +557,14 @@ int64_t nfi_xpn_server::nfi_write_v2(const xpn_file &file, const xpn_fh &fh, con
               .iov_len = (compressed_data_size > 0) ? (size_t)compressed_data_size : (size_t)chunk_size }
         };
 
-        if (m_comm->writev_data(iovs, 2, 0) < 0) return -1;
-        if (m_comm->read_data(&req, sizeof(req)) < 0) return -1;
+        if (m_comm->writev_data(iovs, 2, 0) < 0) {
+          m_error = ERROR_COMM;
+          return -1;
+        }
+        if (m_comm->read_data(&req, sizeof(req)) < 0) {
+          m_error = ERROR_COMM;
+          return -1;
+        }
         if (xpn_compression != 0) net_t2 = std::chrono::high_resolution_clock::now();
 
         if (xpn_compression != 0) {

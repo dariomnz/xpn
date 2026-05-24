@@ -117,7 +117,9 @@ xpn_rw_operation xpn_rw_calculator::next_read() {
         return ret;
     }
 
-    read_get_block(m_file, m_current_offset, ret.srv_offset, ret.server_status);
+    ret.file_offset = m_current_offset;
+
+    read_get_block(m_file, m_current_offset, ret.srv_offset, ret.server_status, ret.current_replica);
 
     // remaining_block_size is the remaining bytes from new_offset until the end of the block
     remaining_block_size = m_file.m_part.m_block_size - (m_current_offset % m_file.m_part.m_block_size);
@@ -136,6 +138,26 @@ xpn_rw_operation xpn_rw_calculator::next_read() {
     return ret;
 }
 
+xpn_rw_operation xpn_rw_calculator::next_replica(xpn_rw_operation failed_op) {
+    xpn_rw_operation next_op = failed_op;
+    int max_replicas = m_file.m_part.m_replication_level;
+
+    while (next_op.replica_tries < max_replicas) {
+        next_op.current_replica++;
+        next_op.replica_tries++;
+
+        m_file.map_offset_mdata(next_op.file_offset, next_op.current_replica % max_replicas, next_op.srv_offset,
+                                next_op.server_status);
+
+        if (m_file.m_part.m_data_serv[next_op.server_status]->m_error == 0) {
+            return next_op;
+        }
+    }
+
+    next_op.server_status = xpn_rw_operation::END;
+    return next_op;
+}
+
 /**
  * Calculates the server and the offset (in server) for reads of the given offset (origin file) of a file with
  * replication.
@@ -148,14 +170,15 @@ xpn_rw_operation xpn_rw_calculator::next_read() {
  *
  * @return Returns 0 on success or -1 on error.
  */
-int xpn_rw_calculator::read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv) {
+int xpn_rw_calculator::read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv,
+                                      int16_t &replication) {
     int retries = 0;
-    int replication = 0;
+    replication = 0;
     int replication_level = file.m_part.m_replication_level;
     if (file.m_part.m_local_serv != -1) {
         do {
             file.map_offset_mdata(offset, replication, local_offset, serv);
-            if (serv == file.m_part.m_local_serv && file.m_part.m_data_serv[serv]->m_error != -1) {
+            if (serv == file.m_part.m_local_serv && file.m_part.m_data_serv[serv]->m_error >= 0) {
                 return 0;
             }
             replication++;
@@ -169,7 +192,7 @@ int xpn_rw_calculator::read_get_block(xpn_file &file, int64_t offset, int64_t &l
         file.map_offset_mdata(offset, replication, local_offset, serv);
         if (replication_level != 0) replication = (replication + 1) % (replication_level + 1);
         retries++;
-    } while (file.m_part.m_data_serv[serv]->m_error == -1 && retries <= replication_level);
+    } while (file.m_part.m_data_serv[serv]->m_error < 0 && retries <= replication_level);
 
     return 0;
 }

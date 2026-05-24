@@ -96,8 +96,10 @@ namespace XPN
         for (uint64_t i = 0; i < file->m_data_vfh.size(); i++)
         {
             if (file->m_data_vfh[i].is_initialized()){
+                if (file->m_part.m_data_serv[i]->m_error < 0) continue;
                 tasks.launch([i, &file](){
                     int res = file->m_part.m_data_serv[i]->nfi_closedir(file->m_path, file->m_data_vfh[i]);
+                    if (file->m_part.m_data_serv[i]->m_error < 0) return WorkerResult(0);
                     return WorkerResult(res);
                 });
             }
@@ -124,20 +126,34 @@ namespace XPN
         }
 
         auto file = m_file_table.get(dirp->fd);
-
-        int master_dir = file->m_mdata.master_dir();
-        file->initialize_vfh_dir(master_dir);
-
-        thread_local static struct ::dirent entry = {};
-
-        res = file->m_part.m_data_serv[master_dir]->nfi_readdir(file->m_path, file->m_data_vfh[master_dir], entry);
-
-        if (res < 0){
-            XPN_DEBUG_END;
+        int master = file->m_mdata.master_dir();
+        if (master < 0) {
+            XPN_DEBUG_END_CUSTOM(file->m_path);
             return nullptr;
         }
 
-        XPN_DEBUG_END;
+        thread_local static struct ::dirent entry = {};
+        while (master >= 0) {
+            res = file->initialize_vfh_dir(master);
+            if (res >= 0) {
+                res = file->m_part.m_data_serv[master]->nfi_readdir(file->m_path, file->m_data_vfh[master], entry);
+                XPN_DEBUG("Readdir from serv " << master << " " << file->m_part.m_data_serv[master]->m_server << ":"
+                                               << file->m_part.m_data_serv[master]->m_server_port << " res " << res);
+            }
+            if (res < 0 && file->m_part.m_data_serv[master]->m_error < 0) {
+                master = file->m_mdata.master_file();
+                XPN_DEBUG("Retry readdir in "<<master);
+                continue;
+            }
+            break;
+        }
+
+        if (res < 0) {
+            XPN_DEBUG_END_CUSTOM(file->m_path);
+            return nullptr;
+        }
+
+        XPN_DEBUG_END_CUSTOM(file->m_path);
         return &entry;
     }
 
@@ -173,8 +189,14 @@ namespace XPN
 
         xpn_file file(file_path, m_partitions.find(part_name)->second);
 
+        constexpr int error_server = -256;
+        int srvs_with_error = 0;
         auto result_handler = [&](const WorkerResult& r) {
             if (r.result < 0) {
+                if (r.result == error_server) {
+                    srvs_with_error++;
+                    return true; // Continue
+                }
                 res = r.result;
                 errno = r.errorno;
             }
@@ -184,12 +206,20 @@ namespace XPN
         for (uint64_t i = 0; i < file.m_part.m_data_serv.size(); i++)
         {
             auto& serv = file.m_part.m_data_serv[i];
+            if (serv->m_error < 0) continue;
             tasks.launch([&serv, &file, perm](){
                 int res = serv->nfi_mkdir(file.m_path, perm);
+                // If error in server continue
+                if (serv->m_error < 0) return WorkerResult(error_server);
                 return WorkerResult(res);
             });
         }
         tasks.wait_remaining();
+
+        // If fail more than replication is an error in the operation
+        if (srvs_with_error > file.m_part.m_replication_level) {
+            res = -1;
+        }
 
         XPN_DEBUG_END_CUSTOM(path<<", "<<perm);
         return res;
@@ -219,8 +249,14 @@ namespace XPN
 
         xpn_file file(file_path, m_partitions.find(part_name)->second);
 
+        constexpr int error_server = -256;
+        int srvs_with_error = 0;
         auto result_handler = [&](const WorkerResult& r) {
             if (r.result < 0) {
+                if (r.result == error_server) {
+                    srvs_with_error++;
+                    return true; // Continue
+                }
                 res = r.result;
                 errno = r.errorno;
             }
@@ -233,12 +269,18 @@ namespace XPN
             tasks.launch([&serv, &file](){
                 // Always wait and not async because it can fail in other ways
                 int res = serv->nfi_rmdir(file.m_path, false);
+                if (serv->m_error < 0) return WorkerResult(error_server);
                 return WorkerResult(res);
                 // v_res[i] = serv->nfi_rmdir(file.m_path, file.m_mdata.master_file()==static_cast<int>(i));
             });
         }
 
         tasks.wait_remaining();
+
+        // If fail more than replication is an error in the operation
+        if (srvs_with_error > file.m_part.m_replication_level) {
+            res = -1;
+        }
 
         XPN_DEBUG_END_CUSTOM(path);
         return res;

@@ -49,6 +49,10 @@ namespace XPN
         }
 
         int master_file = m_mdata.master_file();
+        if (master_file < 0) {
+            XPN_DEBUG("Serv "<<serv<<": file has error in master_file");
+            return true;
+        }
         // Files with metadata with replications
         for (i = 0; i < m_part.m_replication_level+1; i++) 
         {
@@ -283,7 +287,7 @@ namespace XPN
     int xpn_file::initialize_vfh(int index)
     {
         int res = 0;
-        if (m_data_vfh[index].is_initialized()){
+        if (index >= 0 && index < static_cast<int>(m_data_vfh.size()) && m_data_vfh[index].is_initialized()){
             return res;
         }
         XPN_DEBUG_BEGIN_CUSTOM(index<<", "<<m_path);
@@ -302,11 +306,10 @@ namespace XPN
     int xpn_file::initialize_vfh_dir(int index)
     {
         int res = 0;
-        XPN_DEBUG_BEGIN_CUSTOM(index<<", "<<m_path);
-        if (m_data_vfh[index].is_initialized()){
-            XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);
+        if (index >= 0 && index < static_cast<int>(m_data_vfh.size()) && m_data_vfh[index].is_initialized()){
             return res;
         }
+        XPN_DEBUG_BEGIN_CUSTOM(index<<", "<<m_path);
         if (index < 0 || index >= static_cast<int>(m_data_vfh.size())){
             res = -1;
             XPN_DEBUG_END_CUSTOM(index<<", "<<m_path);

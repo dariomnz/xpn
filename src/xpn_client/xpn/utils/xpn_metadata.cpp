@@ -48,14 +48,14 @@ namespace XPN
     int xpn_metadata::calculate_master(bool is_file) const
     {
         int master = xpn_path::hash(m_file.m_path, m_file.m_part.m_data_serv.size(), is_file);
-        for (int i = 0; i < m_file.m_part.m_replication_level; i++)
+        for (int i = 0; i < m_file.m_part.m_replication_level+1; i++)
         {
             master = (master+i)%m_file.m_part.m_data_serv.size();
-            if (!m_file.m_part.m_data_serv[master] || m_file.m_part.m_data_serv[master]->m_error != -1){
-                break;
+            if (m_file.m_part.m_data_serv[master] && m_file.m_part.m_data_serv[master]->m_error >= 0){
+                return master;
             }
         }
-        return master;
+        return -1;
     }
 
     std::ostream& operator<<(std::ostream& os, const xpn_metadata& mdata) {

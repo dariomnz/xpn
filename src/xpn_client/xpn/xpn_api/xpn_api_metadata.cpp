@@ -31,8 +31,23 @@ namespace XPN
         XPN_DEBUG_BEGIN_CUSTOM(mdata.m_file.m_path);
         int res = 0;
         int master = mdata.master_file();
-        XPN_DEBUG("Read metadata from serv "<<master);
-        res = mdata.m_file.m_part.m_data_serv[master]->nfi_read_mdata(mdata.m_file.m_path, mdata);
+        if (master < 0) {
+            XPN_DEBUG_END_CUSTOM(mdata.m_file.m_path);
+            return master;
+        }
+
+        while (master >= 0) {
+            res = mdata.m_file.m_part.m_data_serv[master]->nfi_read_mdata(mdata.m_file.m_path, mdata);
+            XPN_DEBUG("Read metadata from serv " << master << " " << mdata.m_file.m_part.m_data_serv[master]->m_server
+                                                 << ":" << mdata.m_file.m_part.m_data_serv[master]->m_server_port
+                                                 << " res " << res);
+            if (res < 0 && mdata.m_file.m_part.m_data_serv[master]->m_error < 0) {
+                master = mdata.master_file();
+                XPN_DEBUG("Retry read metadata in "<<master);
+                continue;
+            }
+            break;
+        }
 
         XPN_DEBUG(mdata);
 
@@ -52,8 +67,14 @@ namespace XPN
 
         int server = xpn_path::hash(mdata.m_file.m_path, mdata.m_file.m_part.m_data_serv.size(), true);
 
+        constexpr int error_server = -256;
+        int srvs_with_error = 0;
         auto result_handler = [&](const WorkerResult& r) {
             if (r.result < 0) {
+                if (r.result == error_server) {
+                    srvs_with_error++;
+                    return true; // Continue
+                }
                 res = r.result;
                 errno = r.errorno;
             }
@@ -63,19 +84,26 @@ namespace XPN
         for (int i = 0; i < mdata.m_file.m_part.m_replication_level+1; i++)
         {
             server = (server+i) % mdata.m_file.m_part.m_data_serv.size();
-            if (mdata.m_file.m_part.m_data_serv[server]->m_error != -1){
-                XPN_DEBUG("Write metadata to serv "<<server); 
-                res = mdata.m_file.initialize_vfh(server);
-                if (res < 0){
-                    continue;
-                }
+            if (mdata.m_file.m_part.m_data_serv[server]->m_error >= 0){
                 tasks.launch([server, &mdata, only_file_size](){
-                    int res = mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_file.m_data_vfh[server], mdata.m_data, only_file_size);
+                    int res = mdata.m_file.initialize_vfh(server);
+                    if (res >= 0) {
+                        res = mdata.m_file.m_part.m_data_serv[server]->nfi_write_mdata(mdata.m_file.m_path, mdata.m_file.m_data_vfh[server], mdata.m_data, only_file_size);
+                        XPN_DEBUG("Write metadata to serv " << server << " " << mdata.m_file.m_part.m_data_serv[server]->m_server
+                                                            << ":" << mdata.m_file.m_part.m_data_serv[server]->m_server_port
+                                                            << " res " << res);
+                    }
+                    if (mdata.m_file.m_part.m_data_serv[server]->m_error < 0) return WorkerResult(error_server);
                     return WorkerResult(res);
                 });
             }
         }
         tasks.wait_remaining();
+
+        // If fail more than replication is an error in the operation
+        if (srvs_with_error > mdata.m_file.m_part.m_replication_level) {
+            res = -1;
+        }
 
         XPN_DEBUG_END_CUSTOM(mdata.m_file.m_path<<", "<<only_file_size);
         return res;

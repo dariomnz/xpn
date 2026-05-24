@@ -38,6 +38,10 @@ struct xpn_rw_operation {
     uint32_t buffer_size = 0;
     void *buffer = nullptr;
 
+    int16_t current_replica = 0;
+    int16_t replica_tries = 0;
+    int64_t file_offset = 0;
+
     friend std::ostream &operator<<(std::ostream &os, xpn_rw_operation self);
 };
 
@@ -45,7 +49,9 @@ class xpn_rw_calculator {
    public:
     xpn_rw_calculator(xpn_file &file, int64_t offset, const void *buffer, uint64_t size);
 
-    static int read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv);
+    static int read_get_block(xpn_file &file, int64_t offset, int64_t &local_offset, int &serv, int16_t &replication);
+
+    xpn_rw_operation next_replica(xpn_rw_operation failed_op);
 
     xpn_rw_operation next_read();
     xpn_rw_operation next_write();

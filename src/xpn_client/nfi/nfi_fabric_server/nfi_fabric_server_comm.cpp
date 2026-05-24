@@ -147,7 +147,7 @@ int64_t nfi_fabric_server_comm::write_operation(xpn_server_msg &msg) {
     ret = lfi_tsend(m_comm, &msg, msg.get_size(), 0);
     if (ret < 0) {
         debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] ERROR: lfi_tsend fails "
-                    << lfi_strerror(ret));
+                    << ret << " " << lfi_strerror(ret));
         return -1;
     }
 
@@ -168,13 +168,14 @@ int64_t nfi_fabric_server_comm::write_data(const void *data, int64_t size, int64
     if (tag == -1) {
         tag = (int)(pthread_self() % 32450) + 1;
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] Write data lfi_tsend("<<m_comm<<", "<<data<<", "<<size<<", "<<tag<<")");
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] Write data lfi_tsend("
+               << m_comm << ", " << data << ", " << size << ", " << tag << ")");
     ret = lfi_tsend(m_comm, data, size, tag);
     if (ret < 0) {
         debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] ERROR: lfi_tsend fails "
-                    << lfi_strerror(ret));
+                    << ret << " " << lfi_strerror(ret));
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] << End = "<<ret);
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_write_data] << End = " << ret);
     return ret;
 }
 
@@ -189,17 +190,17 @@ int64_t nfi_fabric_server_comm::read_data(void *data, int64_t size, int64_t tag)
     if (tag == -1) {
         tag = (int)(pthread_self() % 32450) + 1;
     }
-    
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_read_data] Read data lfi_trecv("<<m_comm<<", "<<data<<", "<<size<<", "<<tag<<")");
+
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_read_data] Read data lfi_trecv("
+               << m_comm << ", " << data << ", " << size << ", " << tag << ")");
     ret = lfi_trecv(m_comm, data, size, tag);
     if (ret < 0) {
         debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_read_data] ERROR: lfi_trecv fails "
-                    << lfi_strerror(ret));
+                    << ret << " " << lfi_strerror(ret));
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_read_data] << End = "<<ret);
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_read_data] << End = " << ret);
     return ret;
 }
-
 
 int64_t nfi_fabric_server_comm::writev_data(const iovec *iov, int64_t count, int64_t tag) {
     XPN_PROFILE_FUNCTION_ARGS(count);
@@ -212,13 +213,14 @@ int64_t nfi_fabric_server_comm::writev_data(const iovec *iov, int64_t count, int
     if (tag == -1) {
         tag = (int)(pthread_self() % 32450) + 1;
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_writev_data] Write data lfi_tsendv("<<m_comm<<", "<<iov<<", "<<count<<", "<<tag<<")");
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_writev_data] Write data lfi_tsendv("
+               << m_comm << ", " << iov << ", " << count << ", " << tag << ")");
     ret = lfi_tsendv(m_comm, iov, count, tag);
     if (ret < 0) {
         debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_writev_data] ERROR: lfi_tsendv fails "
-                    << lfi_strerror(ret));
+                    << ret << " " << lfi_strerror(ret));
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_writev_data] << End = "<<ret);
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_writev_data] << End = " << ret);
     return ret;
 }
 
@@ -233,13 +235,14 @@ int64_t nfi_fabric_server_comm::readv_data(const iovec *iov, int64_t count, int6
     if (tag == -1) {
         tag = (int)(pthread_self() % 32450) + 1;
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_readv_data] Read data lfi_trecvv("<<m_comm<<", "<<iov<<", "<<count<<", "<<tag<<")");
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_readv_data] Read data lfi_trecvv("
+               << m_comm << ", " << iov << ", " << count << ", " << tag << ")");
     ret = lfi_trecvv(m_comm, iov, count, tag);
     if (ret < 0) {
         debug_error("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_readv_data] ERROR: lfi_trecvv fails "
-                    << lfi_strerror(ret));
+                    << ret << " " << lfi_strerror(ret));
     }
-    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_readv_data] << End = "<<ret);
+    debug_info("[NFI_FABRIC_SERVER_COMM] [nfi_fabric_server_comm_readv_data] << End = " << ret);
     return ret;
 }
 }  // namespace XPN

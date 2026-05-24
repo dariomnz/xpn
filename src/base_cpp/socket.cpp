@@ -42,12 +42,12 @@ namespace XPN
     {
         int64_t ret;
 
-        ret = filesystem::write(socket, buffer, size);
+        ret = filesystem::send(socket, buffer, size, MSG_NOSIGNAL);
         if (ret < 0){
             debug_error("[SOCKET] [socket::recv] ERROR: socket write buffer size "<<size<<" "<<strerror(errno));
         }
         
-        return size;
+        return ret;
     }
 
     int64_t socket::recv ( int socket, void * buffer, uint64_t size )
@@ -59,7 +59,7 @@ namespace XPN
             debug_error("[SOCKET] [socket::recv] ERROR: socket read buffer size "<<size<<" "<<strerror(errno));
         }
 
-        return size;
+        return ret;
     }
     
     int64_t socket::send_line ( int socket, const char *buffer )

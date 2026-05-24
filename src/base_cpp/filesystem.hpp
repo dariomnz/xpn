@@ -22,6 +22,7 @@
 #pragma once
 
 #include <sys/sendfile.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <base_cpp/debug.hpp>
@@ -53,6 +54,31 @@ class filesystem {
 
         debug_info(">> End Sendfile = " << total_sent << print_errno(total_sent));
         return total_sent;
+    }
+
+    static int64_t send(int fd, const void* data, uint64_t len, int flags) {
+        int64_t ret = 0;
+        int r;
+        int l = len;
+        const char* buffer = static_cast<const char*>(data);
+        debug_info(">> Begin");
+
+        do {
+            r = PROXY(send)(fd, buffer, l, flags);
+            if (r <= 0) { /* fail */
+                debug_info("send " << r << (r < 0 ? strerror(errno) : ""));
+                if (ret == 0) ret = r;
+                break;
+            }
+
+            l = l - r;
+            buffer = buffer + r;
+            ret = ret + r;
+
+        } while ((l > 0) && (r >= 0));
+
+        debug_info(">> End = " << ret << print_errno(ret));
+        return ret;
     }
 
     static int64_t write(int fd, const void* data, uint64_t len) {

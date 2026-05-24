@@ -69,6 +69,8 @@ namespace XPN
 
         std::string m_connectionless_port = {}; // port for the connectionless socket
 
+        constexpr static int ERROR = -1;
+        constexpr static int ERROR_COMM = -2;
         int m_error = 0;        // For fault tolerance
     protected:
         const std::string m_url;// URL of this server -> protocol
@@ -132,6 +134,7 @@ namespace XPN
             }
             ret = m_comm->write_operation(message);
             if (ret < 0){
+                m_error = ERROR_COMM;
                 printf("[NFI_XPN] [nfi_write_operation] ERROR: nfi_write_operation fails\n");
                 return -1;
             }
@@ -176,6 +179,7 @@ namespace XPN
             debug_info("[NFI_XPN] [nfi_server_do_request] Response operation: "<<static_cast<int>(op)<<" "<<xpn_server_ops_name(op)<<" to read "<<sizeof(req));
             ret = m_comm->read_data((void *)&(req), sizeof(req));
             if (ret < 0) {
+                m_error = ERROR_COMM;
                 return -1;
             }
             
@@ -206,6 +210,7 @@ namespace XPN
 
             ret = m_comm->read_data((void *)&(req), sizeof(req));
             if (ret < 0) {
+                m_error = ERROR_COMM;
                 return -1;
             }
 
