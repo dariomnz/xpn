@@ -391,6 +391,34 @@ extern "C" int __open_2(const char *path, int flags, ...) {
 
 #endif
 
+extern "C" int openat(int fd, const char *file, int oflag, ...) {
+    int ret;
+    va_list ap;
+    mode_t mode = 0;
+    va_start(ap, oflag);
+    mode = va_arg(ap, mode_t);
+    va_end(ap);
+    debug_info_fmt("[BYPASS] >> Begin openat(%d, %s, %d, %d)", fd, file, oflag, mode);
+    // TODO
+    ret = PROXY(openat)(fd, file, oflag, mode);
+    debug_info_fmt("[BYPASS] << PROXY(openat)(%d, %s, %d, %d) -> %d", fd, file, oflag, mode, ret);
+    return ret;
+}
+
+extern "C" int openat64(int fd, const char *file, int oflag, ...) {
+    int ret;
+    va_list ap;
+    mode_t mode = 0;
+    va_start(ap, oflag);
+    mode = va_arg(ap, mode_t);
+    va_end(ap);
+    debug_info_fmt("[BYPASS] >> Begin openat64(%d, %s, %d, %d)", fd, file, oflag, mode);
+    // TODO
+    ret = PROXY(openat64)(fd, file, oflag, mode);
+    debug_info_fmt("[BYPASS] << PROXY(openat64)(%d, %s, %d, %d) -> %d", fd, file, oflag, mode, ret);
+    return ret;
+}
+
 extern "C" int creat(const char *path, mode_t mode) {
     int fd, ret;
     debug_info_fmt("[BYPASS] >> Begin creat(%s, %d)", path, mode);
@@ -460,7 +488,7 @@ extern "C" ssize_t read(int fd, void *buf, size_t nbyte) {
 
 extern "C" ssize_t write(int fd, const void *buf, size_t nbyte) {
     ssize_t ret = -1;
-    // debug_info_fmt("[BYPASS] >> Begin write(%d, %p, %ld)", fd, buf, nbyte);
+    debug_info_fmt("[BYPASS] >> Begin write(%d, %p, %ld)", fd, buf, nbyte);
     // This if checks if variable fd passed as argument is a expand fd.
     if (fdstable_get(fd)) {
         scope_xpn;
@@ -540,6 +568,162 @@ extern "C" ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset)
     } else {
         ret = PROXY(pwrite64)(fd, buf, count, offset);
         debug_info_fmt("[BYPASS] << PROXY(pwrite64)(%d, %p, %ld, %ld) -> %ld", fd, buf, count, offset, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t readv(int fd, const struct iovec *iov, int iovcnt) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin readv(%d, %p, %d)", fd, iov, iovcnt);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_readv(fd, iov, iovcnt);
+        debug_info_fmt("[BYPASS] << xpn_readv(%d, %p, %d) -> %ld", fd, iov, iovcnt, ret);
+    } else {
+        ret = PROXY(readv)(fd, iov, iovcnt);
+        debug_info_fmt("[BYPASS] << PROXY(readv)(%d, %p, %d) -> %ld", fd, iov, iovcnt, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin writev(%d, %p, %d)", fd, iov, iovcnt);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_writev(fd, iov, iovcnt);
+        debug_info_fmt("[BYPASS] << xpn_writev(%d, %p, %d) -> %ld", fd, iov, iovcnt, ret);
+    } else {
+        ret = PROXY(writev)(fd, iov, iovcnt);
+        debug_info_fmt("[BYPASS] << PROXY(writev)(%d, %p, %d) -> %ld", fd, iov, iovcnt, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin preadv(%d, %p, %d, %ld)", fd, iov, iovcnt, offset);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_preadv(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_preadv(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    } else {
+        ret = PROXY(preadv)(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << PROXY(preadv)(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin pwritev(%d, %p, %d, %ld)", fd, iov, iovcnt, offset);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_pwritev(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_pwritev(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    } else {
+        ret = PROXY(pwritev)(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << PROXY(pwritev)(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t preadv64(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin preadv64(%d, %p, %d, %ld)", fd, iov, iovcnt, offset);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_preadv(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_preadv64(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    } else {
+        ret = PROXY(preadv64)(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << PROXY(preadv64)(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t pwritev64(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin pwritev64(%d, %p, %d, %ld)", fd, iov, iovcnt, offset);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        ret = xpn_pwritev(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_pwritev64(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    } else {
+        ret = PROXY(pwritev64)(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << PROXY(pwritev64)(%d, %p, %d, %ld) -> %ld", fd, iov, iovcnt, offset, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin preadv2(%d, %p, %d, %ld, %d)", fd, iov, iovcnt, offset, flags);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        // TODO: use flags
+        ret = xpn_preadv(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_preadv2(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    } else {
+        ret = PROXY(preadv2)(fd, iov, iovcnt, offset, flags);
+        debug_info_fmt("[BYPASS] << PROXY(preadv2)(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin pwritev2(%d, %p, %d, %ld, %d)", fd, iov, iovcnt, offset, flags);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        // TODO: use flags
+        ret = xpn_pwritev(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_pwritev2(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    } else {
+        ret = PROXY(pwritev2)(fd, iov, iovcnt, offset, flags);
+        debug_info_fmt("[BYPASS] << PROXY(pwritev2)(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t preadv64v2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin preadv64v2(%d, %p, %d, %ld, %d)", fd, iov, iovcnt, offset, flags);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        // TODO: use flags
+        ret = xpn_preadv(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_preadv64v2(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    } else {
+        ret = PROXY(preadv64v2)(fd, iov, iovcnt, offset, flags);
+        debug_info_fmt("[BYPASS] << PROXY(preadv64v2)(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags,
+                       ret);
+    }
+    return ret;
+}
+
+extern "C" ssize_t pwritev64v2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags) {
+    ssize_t ret = -1;
+    debug_info_fmt("[BYPASS] >> Begin pwritev64v2(%d, %p, %d, %ld, %d)", fd, iov, iovcnt, offset, flags);
+    // This if checks if variable fd passed as argument is a expand fd.
+    if (fdstable_get(fd)) {
+        scope_xpn;
+        // TODO: use flags
+        ret = xpn_pwritev(fd, iov, iovcnt, offset);
+        debug_info_fmt("[BYPASS] << xpn_pwritev64v2(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags, ret);
+    } else {
+        ret = PROXY(pwritev64v2)(fd, iov, iovcnt, offset, flags);
+        debug_info_fmt("[BYPASS] << PROXY(pwritev64v2)(%d, %p, %d, %ld, %d) -> %ld", fd, iov, iovcnt, offset, flags,
+                       ret);
     }
     return ret;
 }
@@ -688,7 +872,11 @@ extern "C" int fstat(int fd, struct stat *buf) {
         ret = xpn_fstat(fd, buf);
         debug_info_fmt("[BYPASS] << xpn_fstat(%d, %p) -> %d", fd, buf, ret);
     } else {
+#ifdef _STAT_VER
+        ret = PROXY(__fxstat)(_STAT_VER, fd, buf);
+#else
         ret = PROXY(fstat)(fd, buf);
+#endif
         debug_info_fmt("[BYPASS] << PROXY(fstat)(%d, %p) -> %d", fd, buf, ret);
     }
     return ret;
@@ -844,6 +1032,8 @@ extern "C" FILE *fopen(const char *path, const char *mode) {
     }
     return ret;
 }
+
+extern "C" FILE *fopen64(const char *path, const char *mode) { return fopen(path, mode); }
 
 extern "C" FILE *fdopen(int fd, const char *mode) {
     FILE *fp;
@@ -1011,9 +1201,18 @@ extern "C" int mkdir(const char *path, mode_t mode) {
     return ret;
 }
 
+extern "C" DIR *fdopendir(int fd) {
+    DIR *ret;
+    debug_info_fmt("[BYPASS] >> Begin fdopendir(%d)", fd);
+    // TODO
+    ret = PROXY(fdopendir)(fd);
+    debug_info_fmt("[BYPASS] << PROXY(fdopendir)(%d) -> %p", fd, ret);
+    return ret;
+}
+
 extern "C" DIR *opendir(const char *dirname) {
     DIR *ret;
-    debug_info_fmt("[BYPASS] >> Begin opendir(%p)", dirname);
+    debug_info_fmt("[BYPASS] >> Begin opendir(%s)", dirname);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(dirname)) {
         scope_xpn;
@@ -1287,9 +1486,15 @@ extern "C" char *realpath(const char *__restrict__ path, char *__restrict__ reso
     debug_info_fmt("[BYPASS] >> Begin realpath(%s, %s)", path, resolved_path);
     // This if checks if variable path passed as argument starts with the expand prefix.
     if (is_xpn_prefix(path)) {
-        strcpy(resolved_path, path);
-        debug_info_fmt("[BYPASS] << xpn_realpath(%s, %s) -> %s", path, resolved_path, resolved_path);
-        return resolved_path;
+        char *ret;
+        if (resolved_path) {
+            strcpy(resolved_path, path);
+            ret = resolved_path;
+        } else {
+            ret = strdup(path);
+        }
+        debug_info_fmt("[BYPASS] << xpn_realpath(%s, %s) -> %s", path, resolved_path, ret);
+        return ret;
     } else {
         char *ret = PROXY(realpath)(path, resolved_path);
         debug_info_fmt("[BYPASS] << PROXY(realpath)(%s, %s) -> %s", path, resolved_path, ret);
