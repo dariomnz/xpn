@@ -89,6 +89,7 @@ std::ostream &operator<<(std::ostream &os, const format_open_flags &open_flags) 
 
     return os;
 }
+
 std::ostream &operator<<(std::ostream &os, const format_open_mode &open_mode) {
     os << ((open_mode.m_mode & S_IRUSR) ? "r" : "-");
     os << ((open_mode.m_mode & S_IWUSR) ? "w" : "-");

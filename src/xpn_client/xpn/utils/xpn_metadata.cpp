@@ -38,6 +38,7 @@ namespace XPN
         data_nserv[0]       = static_cast<int>(mdata.m_file.m_part.m_data_serv.size());
         version             = VERSION;
         type                = 0;
+        mode                = mdata.m_file.m_mode;
         block_size          = mdata.m_file.m_part.m_block_size;
         compressed          = mdata.m_file.m_part.m_compressed;
         replication_level   = mdata.m_file.m_part.m_replication_level;

@@ -40,13 +40,14 @@ namespace XPN
         return path;
     }
 
-    int xpn_api::chdir(char *path)
+    int xpn_api::chdir([[maybe_unused]] char *path)
     {
         XPN_DEBUG_BEGIN;
         int res = 0;
 
         // TODO: return a correct errno in case of error
-        cwd = path;
+        // TODO: think if necesary because in bypass all path are absolute and can break if set cwd
+        // cwd = path;
 
         XPN_DEBUG_END;
         return res;

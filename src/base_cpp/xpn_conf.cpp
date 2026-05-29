@@ -40,7 +40,7 @@ inline std::string_view trim(std::string_view sv) {
     return sv.substr(start, end - start + 1);
 }
 
-inline int getSizeFactor(std::string_view name) {
+int xpn_conf::getSizeFactor(std::string_view name) {
     if (name.empty()) return 0;
 
     constexpr int KB = 1024;

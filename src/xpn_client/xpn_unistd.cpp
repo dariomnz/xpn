@@ -303,6 +303,97 @@ ssize_t xpn_pwrite ( int fd, const void *buffer, size_t size, off_t offset )
 
   return ret;
 }
+} // extern "C"
+
+template <typename F>
+inline ssize_t xpn_vector_io_impl(const struct iovec *iov, int iovcnt, F&& io_operation) 
+{
+  ssize_t total_bytes = 0;
+
+  XPN_API_LOCK();
+  
+  // TODO: optimize
+  auto &api = XPN::xpn_api::get_instance();
+
+  for (int i = 0; i < iovcnt; ++i) {
+    if (iov[i].iov_base == nullptr || iov[i].iov_len == 0) {
+      continue;
+    }
+
+    ssize_t ret = io_operation(api, iov[i].iov_base, iov[i].iov_len, total_bytes);
+
+    if (ret < 0) {
+      if (total_bytes == 0) {
+        total_bytes = -1;
+      }
+      break;
+    }
+
+    total_bytes += ret;
+
+    if (static_cast<size_t>(ret) < iov[i].iov_len) {
+      break;
+    }
+  }
+  
+  XPN_API_UNLOCK();
+
+  return total_bytes;
+}
+
+extern "C" {
+
+ssize_t xpn_readv ( int fd, const struct iovec *iov, int iovcnt )
+{
+  debug_info("[XPN_UNISTD] [xpn_readv] >> Begin");
+  
+  ssize_t res = xpn_vector_io_impl(iov, iovcnt, 
+    [fd](auto& api, void* base, size_t len, ssize_t /*accum*/) {
+      return api.read(fd, base, len);
+    });
+
+  debug_info("[XPN_UNISTD] [xpn_readv] >> End");
+  return res;
+}
+
+ssize_t xpn_preadv ( int fd, const struct iovec *iov, int iovcnt, off_t offset )
+{
+  debug_info("[XPN_UNISTD] [xpn_preadv] >> Begin");
+  
+  ssize_t res = xpn_vector_io_impl(iov, iovcnt, 
+    [fd, offset](auto& api, void* base, size_t len, ssize_t accum) {
+      return api.pread(fd, base, len, offset + accum);
+    });
+
+  debug_info("[XPN_UNISTD] [xpn_preadv] >> End");
+  return res;
+}
+
+ssize_t xpn_writev ( int fd, const struct iovec *iov, int iovcnt )
+{
+  debug_info("[XPN_UNISTD] [xpn_writev] >> Begin");
+  
+  ssize_t res = xpn_vector_io_impl(iov, iovcnt, 
+    [fd](auto& api, void* base, size_t len, ssize_t /*accum*/) {
+      return api.write(fd, base, len);
+    });
+
+  debug_info("[XPN_UNISTD] [xpn_writev] >> End");
+  return res;
+}
+
+ssize_t xpn_pwritev ( int fd, const struct iovec *iov, int iovcnt, off_t offset )
+{
+  debug_info("[XPN_UNISTD] [xpn_pwritev] >> Begin");
+  
+  ssize_t res = xpn_vector_io_impl(iov, iovcnt, 
+    [fd, offset](auto& api, void* base, size_t len, ssize_t accum) {
+      return api.pwrite(fd, base, len, offset + accum);
+    });
+
+  debug_info("[XPN_UNISTD] [xpn_pwritev] >> End");
+  return res;
+}
 
 off_t   xpn_lseek ( int fd, off_t offset, int flag )
 {

@@ -59,6 +59,7 @@ struct format_open_mode {
     format_open_mode(mode_t mode) : m_mode(mode) {}
     friend std::ostream &operator<<(std::ostream &os, const format_open_mode &open_mode);
 };
+
 struct format_bytes {
     uint64_t bytes;
     int precision;
@@ -89,8 +90,8 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
 #define XPN_DEBUG_COMMON_HEADER                                                                                    \
     {                                                                                                              \
         ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                      \
-        out << "[" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ << "] [" \
-            << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] ";                                              \
+        out << "[" << ::XPN::get_time_stamp() << "] [" << ::getpid() << ":" << std::this_thread::get_id() << "] [" \
+            << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] ";                         \
     }
 
 #ifdef DEBUG
@@ -127,24 +128,27 @@ static constexpr int DEBUG_BUFFER_SIZE = 4096;
     {                                                                                                             \
         std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                \
         ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                     \
-        out << "[ERROR] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
-            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;         \
+        out << "[ERROR] [" << ::XPN::get_time_stamp() << "] [" << ::getpid() << ":" << std::this_thread::get_id() \
+            << "] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format  \
+            << std::endl;                                                                                         \
     }
 #undef debug_warning
 #define debug_warning(out_format)                                                                                   \
     {                                                                                                               \
         std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                                  \
         ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                       \
-        out << "[WARNING] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
-            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;           \
+        out << "[WARNING] [" << ::XPN::get_time_stamp() << "] [" << ::getpid() << ":" << std::this_thread::get_id() \
+            << "] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format    \
+            << std::endl;                                                                                           \
     }
 #undef debug_info
 #define debug_info(out_format)                                                                                   \
     {                                                                                                            \
         std::unique_lock __xpn_debug_print_lock(::XPN::static_debug_mutex::get());                               \
         ::XPN::FixedCerrStream<::XPN::DEBUG_BUFFER_SIZE> out;                                                    \
-        out << "[INFO] [" << ::XPN::get_time_stamp() << "] [" << std::this_thread::get_id() << "] [" << __func__ \
-            << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format << std::endl;        \
+        out << "[INFO] [" << ::XPN::get_time_stamp() << "] [" << ::getpid() << ":" << std::this_thread::get_id() \
+            << "] [" << __func__ << "] [" << ::XPN::file_name(__FILE__) << ":" << __LINE__ << "] " << out_format \
+            << std::endl;                                                                                        \
     }
 #undef debug_info_fmt
 #define debug_info_fmt(...)                  \

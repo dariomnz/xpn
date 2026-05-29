@@ -9,16 +9,12 @@
 #include <vector>
 
 #include "base_cpp/debug.hpp"
+#include "base_cpp/filesystem.hpp"
+#include "base_cpp/xpn_conf.hpp"
 #include "lz4.h"
+#include "xpn/xpn_metadata.hpp"
 
-// Configuración por defecto
-static constexpr uint32_t RAW_HEADER_SIZE = 8192;
-static constexpr uint32_t LOGICAL_BLOCK_SIZE = 512 * 1024;
 static constexpr uint32_t META_SIZE = sizeof(uint32_t) * 2;
-
-static inline const uint32_t MAX_COMP_SIZE = LZ4_COMPRESSBOUND(LOGICAL_BLOCK_SIZE);
-static constexpr uint32_t ALIGNMENT = 4096;
-static constexpr uint32_t PHYSICAL_BLOCK_SIZE = (META_SIZE + MAX_COMP_SIZE + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);
 
 int count_data_units(int fd, off_t start, off_t end, size_t sub_size) {
     int count = 0;
@@ -47,27 +43,12 @@ void draw_range(int fd, off_t start, off_t end, size_t sub_size) {
     std::cout << "|";
 }
 
-// void draw_range(int fd, off_t start, off_t end, size_t sub_size, int& data_count, int& empty_count) {
-//     std::cout << "|";
-//     for (off_t offset = start; offset < end; offset += sub_size) {
-//         off_t current_sub_end = offset + sub_size;
-//         if (current_sub_end > end) current_sub_end = end;
+void draw_sparse_map(const char* filename, const char* block_size) {
+    const int LOGICAL_BLOCK_SIZE = XPN::xpn_conf::getSizeFactor(block_size);
+    const uint32_t MAX_COMP_SIZE = LZ4_COMPRESSBOUND(LOGICAL_BLOCK_SIZE);
+    constexpr uint32_t ALIGNMENT = 4096;
+    uint32_t PHYSICAL_BLOCK_SIZE = (META_SIZE + MAX_COMP_SIZE + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);
 
-//         // Comprobamos si hay datos en este sub-bloque
-//         off_t next_data = lseek(fd, offset, SEEK_DATA);
-
-//         if (next_data != -1 && next_data < current_sub_end) {
-//             std::cout << "█";
-//             data_count++;
-//         } else {
-//             std::cout << " ";
-//             empty_count++;
-//         }
-//     }
-//     std::cout << "|";
-// }
-
-void draw_sparse_map(const char* filename) {
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
         perror("Error opening file");
@@ -89,10 +70,17 @@ void draw_sparse_map(const char* filename) {
 
     std::cout << "\nVisual Map of " << filename << " (Sub-block: " << sub_block_sz / 1024 << " KB)\n";
     std::cout << std::string(60, '-') << "\n";
+    // Print metadata
+    XPN::xpn_metadata::data mdata;
+    auto ret = XPN::filesystem::pread(fd, &mdata, sizeof(mdata), 0);
+    if (ret > 0) {
+        std::cout << mdata;
+    }
+    std::cout << std::string(60, '-') << "\n";
 
     // --- 1. Header (8 KB) ---
     off_t h_start = 0;
-    off_t h_end = RAW_HEADER_SIZE;
+    off_t h_end = XPN::xpn_metadata::HEADER_SIZE;
 
     // A. Escaneo previo para el porcentaje del Header
     int h_filled = count_data_units(fd, h_start, h_end, sub_block_sz);
@@ -106,13 +94,13 @@ void draw_sparse_map(const char* filename) {
     // B. Imprimir con el mismo formato que los bloques para que quede alineado
     std::cout << std::left << std::setw(6) << "Header"
               << " [" << std::fixed << std::setprecision(1) << std::setw(5) << std::right << h_pct << "%] "
-              << "(" << std::setw(6) << XPN::format_bytes(RAW_HEADER_SIZE) << ") ";
+              << "(" << std::setw(6) << XPN::format_bytes(XPN::xpn_metadata::HEADER_SIZE) << ") ";
 
     draw_range(fd, h_start, h_end, sub_block_sz);
     std::cout << "\n";
 
     // --- 2. Bloques (512 KB cada uno) ---
-    off_t current_offset = RAW_HEADER_SIZE;
+    off_t current_offset = XPN::xpn_metadata::HEADER_SIZE;
     int block_idx = 0;
 
     while (current_offset < (off_t)total_size) {
@@ -159,10 +147,10 @@ void draw_sparse_map(const char* filename) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <filename> [sub_block_kb]\n";
+        std::cerr << "Usage: " << argv[0] << " <filename> [block_size]\n";
         return 1;
     }
 
-    draw_sparse_map(argv[1]);
+    draw_sparse_map(argv[1], argc > 2 ? argv[2] : "512k");
     return 0;
 }

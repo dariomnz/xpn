@@ -68,6 +68,10 @@ class xpn_file {
    public:
     xpn_file(std::string_view path, xpn_partition &part) : m_path(path), m_part(part), m_mdata(*this) {
         m_data_vfh.resize(m_part.m_data_serv.size());
+        
+        if (xpn_env::get_instance().xpn_buffering_writes) {
+            m_buffering.buffer.reserve(MAX_BUFFER_SIZE);
+        }
     }
     static std::shared_ptr<xpn_file> change_part(std::shared_ptr<xpn_file> &file, xpn_partition &new_part) {
         auto new_file = std::make_shared<xpn_file>(file->m_path, new_part);
@@ -110,5 +114,12 @@ class xpn_file {
     xpn_metadata m_mdata;                // metadata
     int64_t m_offset = 0;                // offset of the open file
     std::vector<xpn_fh> m_data_vfh;      // virtual FH
+    
+    struct buffering_writes {
+        std::mutex mutex;
+        std::vector<uint8_t> buffer;
+        int64_t offset = -1;
+    };
+    buffering_writes m_buffering;        // buffering for writes
 };
 }  // namespace XPN

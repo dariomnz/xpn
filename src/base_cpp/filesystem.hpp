@@ -23,6 +23,7 @@
 
 #include <sys/sendfile.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #include <base_cpp/debug.hpp>
@@ -130,6 +131,67 @@ class filesystem {
         } while ((l > 0) && (r >= 0));
 
         debug_info(">> End pwrite(" << fd << ", " << len << ", " << offset << ") = " << ret << print_errno(ret));
+        return ret;
+    }
+
+    static int64_t pwritev(int fd, const struct iovec* iov, int iovcnt, int64_t offset) {
+        debug_info(">> Begin pwritev(" << fd << ", iovcnt: " << iovcnt << ", " << offset << ")");
+
+        if (iovcnt > IOV_MAX || iovcnt <= 0) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        int64_t ret = 0;
+        int64_t off = offset;
+
+        const struct iovec* current_iov = iov;
+        int current_iovcnt = iovcnt;
+
+        struct iovec iov_copy[IOV_MAX];
+        bool using_copy = false;
+
+        while (current_iovcnt > 0) {
+            ssize_t r = PROXY(pwritev)(fd, current_iov, current_iovcnt, off);
+
+            if (r <= 0) { /* fail o EOF */
+                debug_info("pwritev " << r << (r < 0 ? strerror(errno) : ""));
+                if (ret == 0) ret = r;
+                break;
+            }
+
+            ret += r;
+            off += r;
+
+            size_t bytes_left = r;
+            while (current_iovcnt > 0 && bytes_left >= current_iov->iov_len) {
+                bytes_left -= current_iov->iov_len;
+                current_iov++;
+                current_iovcnt--;
+            }
+
+            // Fast path
+            if (current_iovcnt == 0 && !using_copy) {
+                break;
+            }
+
+            if (bytes_left > 0 && !using_copy) {
+                // if bytes left clone the iov to modify
+                std::memcpy(iov_copy, iov, sizeof(iovec) * iovcnt);
+                int index = iovcnt - current_iovcnt;
+                current_iov = &iov_copy[index];
+                using_copy = true;
+            }
+
+            if (bytes_left > 0 && current_iovcnt > 0) {
+                struct iovec* mutable_iov = const_cast<struct iovec*>(current_iov);
+                mutable_iov->iov_base = static_cast<char*>(mutable_iov->iov_base) + bytes_left;
+                mutable_iov->iov_len -= bytes_left;
+            }
+        }
+
+        debug_info(">> End pwritev(" << fd << ", iovcnt: " << iovcnt << ", " << offset << ") = " << ret
+                                     << print_errno(ret));
         return ret;
     }
 

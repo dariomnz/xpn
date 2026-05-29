@@ -35,7 +35,7 @@
   #include <sys/statfs.h>
   #include <stdio.h>
   #include <dirent.h>
-  //#include <sys/uio.h>
+  #include <sys/uio.h>
   
 
   /* ... Const / Const ................................................. */
@@ -109,8 +109,10 @@
   ssize_t     xpn_pwrite (int fd, const void *buffer, size_t size, off_t offset);
   off_t       xpn_lseek  (int fd, off_t offset, int flag);
 
-  //ssize_t   xpn_writev (int fildes, const struct iovec *iov, int iovcnt);
-  //ssize_t   xpn_readv  (int fildes, const struct iovec *iov, int iovcnt);
+  ssize_t   xpn_writev (int fd, const struct iovec *iov, int iovcnt);
+  ssize_t   xpn_readv  (int fd, const struct iovec *iov, int iovcnt);
+  ssize_t   xpn_pwritev (int fd, const struct iovec *iov, int iovcnt, off_t offset);
+  ssize_t   xpn_preadv  (int fd, const struct iovec *iov, int iovcnt, off_t offset);
 
   /***************/
   /*

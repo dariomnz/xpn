@@ -132,6 +132,8 @@ namespace XPN
         int   transfer_fs2xpn    (const char *path, const char *newpath);
         int   dup       (int fd);
         int   dup2      (int fd, int fd2);
+        int   fsync     (int fd);
+        int   fsync     (xpn_file& file);
 
         // Stat api
         int   internal_stat(xpn_file& file, struct ::stat *sb);
@@ -153,7 +155,7 @@ namespace XPN
         int64_t pread           (xpn_file& file, void *buffer, uint64_t size, int64_t offset);
         int64_t write           (int fd, const void *buffer, uint64_t size);
         int64_t pwrite          (int fd, const void *buffer, uint64_t size, int64_t offset);
-        int64_t pwrite          (xpn_file& file, const void *buffer, uint64_t size, int64_t offset);
+        int64_t pwrite          (xpn_file& file, const void *buffer, uint64_t size, int64_t offset, bool canBuffer);
         int64_t   lseek           (int fd, int64_t offset, int flag);
 
         // f_file api

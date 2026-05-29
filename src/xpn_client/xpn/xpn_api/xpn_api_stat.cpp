@@ -26,19 +26,65 @@
 
 namespace XPN
 {
+    struct format_stat {
+        struct ::stat &st;
+        friend std::ostream& operator<<(std::ostream& os, const format_stat& st) {
+            os << "--- File Status (struct stat) ---\n";
+
+            os << std::left << std::setw(18) << "Device ID:"      << st.st.st_dev << "\n";
+            os << std::left << std::setw(18) << "Inode Number:"   << st.st.st_ino << "\n";
+            
+            os << std::left << std::setw(18) << "File Type:";
+            if (S_ISREG(st.st.st_mode))        os << "Regular file\n";
+            else if (S_ISDIR(st.st.st_mode))   os << "Directory\n";
+            else if (S_ISLNK(st.st.st_mode))   os << "Symbolic link\n";
+            else if (S_ISCHR(st.st.st_mode))   os << "Character device\n";
+            else if (S_ISBLK(st.st.st_mode))   os << "Block device\n";
+            else if (S_ISFIFO(st.st.st_mode))  os << "FIFO (Named pipe)\n";
+            else if (S_ISSOCK(st.st.st_mode))  os << "Socket\n";
+            else                               os << "Unknown\n";
+            
+            os << std::left << std::setw(18) << "Permissions:"   << format_open_mode(st.st.st_mode) << "\n";
+            os << std::left << std::setw(18) << "Hard Links:"     << st.st.st_nlink << "\n";
+            
+            os << std::left << std::setw(18) << "User ID (UID):"  << st.st.st_uid << "\n";
+            os << std::left << std::setw(18) << "Group ID (GID):" << st.st.st_gid << "\n";
+            
+            if (S_ISCHR(st.st.st_mode) || S_ISBLK(st.st.st_mode)) {
+                os << std::left << std::setw(18) << "Device Type (Rdev):" << st.st.st_rdev << "\n";
+            }
+            
+            os << std::left << std::setw(18) << "Total Size:"     << st.st.st_size << " bytes\n";
+            os << std::left << std::setw(18) << "Block Size:"     << st.st.st_blksize << " bytes\n";
+            os << std::left << std::setw(18) << "Blocks Allocated:" << st.st.st_blocks << "\n";
+            
+            std::time_t atime = st.st.st_atime;
+            std::time_t mtime = st.st.st_mtime;
+            std::time_t ctime = st.st.st_ctime;
+            
+            os << std::left << std::setw(18) << "Last Access:"    << std::ctime(&atime);
+            os << std::left << std::setw(18) << "Last Modify:"    << std::ctime(&mtime);
+            os << std::left << std::setw(18) << "Status Change:"   << std::ctime(&ctime);
+            os << "---------------------------------";
+            return os;
+        }
+    };
+
     int xpn_api::internal_stat(xpn_file &file, struct ::stat *sb) {
         XPN_DEBUG_BEGIN_CUSTOM(file.m_path);
         int res = 0;
 
         if (read_metadata(file.m_mdata) < 0){
+            res = -1;
             XPN_DEBUG_END_CUSTOM(file.m_path);
-            return -1;
+            return res;
         }
         
         int master = file.m_mdata.master_file();
         if (master < 0) {
+            res = master;
             XPN_DEBUG_END_CUSTOM(file.m_path);
-            return master;
+            return res;
         }
 
         while (master >= 0) {
@@ -57,7 +103,7 @@ namespace XPN
             sb->st_size = file.m_mdata.m_data.file_size;
         }
 
-        XPN_DEBUG_END_CUSTOM(file.m_path);
+        XPN_DEBUG_END_CUSTOM(file.m_path<<"\n"<<format_stat(*sb));
         return res;
     }
 
@@ -93,7 +139,11 @@ namespace XPN
         }
 
         xpn_file file(file_path, m_partitions.find(name_part)->second);
-        return internal_stat(file, sb);
+
+        res = internal_stat(file, sb);
+
+        XPN_DEBUG_END_CUSTOM(path);
+        return res;
     }
 
     int xpn_api::chown([[maybe_unused]] const char *path, [[maybe_unused]] uid_t owner, [[maybe_unused]] gid_t group)

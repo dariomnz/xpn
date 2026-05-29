@@ -70,6 +70,7 @@ class xpn_env {
         parse_env("XPN_NET_COMPRESSION", xpn_net_compression);
         parse_env("XPN_COMPRESSION_NET_MULTIPLIER", xpn_compression_net_multiplier);
         parse_env("XPN_RW_V2", xpn_rw_v2);
+        parse_env("XPN_BUFFERING_WRITES", xpn_buffering_writes);
     }
     // Delete copy constructor
     xpn_env(const xpn_env&) = delete;
@@ -99,6 +100,7 @@ class xpn_env {
     int xpn_net_compression = 0;
     int xpn_compression_net_multiplier = 1;
     int xpn_rw_v2 = 0;
+    int xpn_buffering_writes = 0;
 
    public:
     static xpn_env& get_instance() {

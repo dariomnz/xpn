@@ -86,6 +86,8 @@ namespace XPN
             }
         };
 
+        static int getSizeFactor(std::string_view name);
+
     public:
         xpn_conf();
 

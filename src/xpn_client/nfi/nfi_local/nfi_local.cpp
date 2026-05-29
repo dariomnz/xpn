@@ -97,7 +97,6 @@ int64_t nfi_local::nfi_read (const xpn_file &file, const xpn_fh &fh, char *buffe
 
   debug_info("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] >> Begin");
 
-  
   // Check arguments...
   if (size == 0){
     return 0;
@@ -120,14 +119,7 @@ int64_t nfi_local::nfi_read (const xpn_file &file, const xpn_fh &fh, char *buffe
     debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read open fail '"<<srv_path<<"'");
     return -1;
   }
-  ret = PROXY(lseek)(fd, offset, SEEK_SET);
-  if (ret < 0)
-  {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read lseek fail from '"<<srv_path<<"'");
-    ret = -1;
-    goto cleanup_nfi_local_read;
-  }
-  ret = filesystem::read(fd, buffer, size);
+  ret = filesystem::pread(fd, buffer, size, offset);
   if (ret < 0)
   {
     debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_read] ERROR: real_posix_read reads fail from '"<<srv_path<<"'");
@@ -155,7 +147,6 @@ int64_t nfi_local::nfi_write (const xpn_file &file, const xpn_fh &fh, const char
     return 0;
   }
 
-  
   int fd;
   FixedStringPath srv_path;
   srv_path.append(m_path);
@@ -173,14 +164,7 @@ int64_t nfi_local::nfi_write (const xpn_file &file, const xpn_fh &fh, const char
     debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write open fail '"<<srv_path<<"'");
     return -1;
   }
-  ret = PROXY(lseek)(fd, offset, SEEK_SET);
-  if (ret < 0)
-  {
-    debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write lseek fail from '"<<srv_path<<"'");
-    ret = -1;
-    goto cleanup_nfi_local_write;
-  }
-  ret = filesystem::write(fd, buffer, size);
+  ret = filesystem::pwrite(fd, buffer, size, offset);
   if (ret < 0)
   {
     debug_error("[SERV_ID="<<m_server<<"] [NFI_LOCAL] [nfi_local_write] ERROR: real_posix_write write fail from '"<<srv_path<<"'");

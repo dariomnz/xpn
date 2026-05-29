@@ -128,7 +128,7 @@ namespace XPN
         auto file = m_file_table.get(dirp->fd);
         int master = file->m_mdata.master_dir();
         if (master < 0) {
-            XPN_DEBUG_END_CUSTOM(file->m_path);
+            XPN_DEBUG_END_CUSTOM('\''<<file->m_path<<'\'');
             return nullptr;
         }
 
@@ -149,11 +149,11 @@ namespace XPN
         }
 
         if (res < 0) {
-            XPN_DEBUG_END_CUSTOM(file->m_path);
+            XPN_DEBUG_END_CUSTOM('\''<<file->m_path<<'\'');
             return nullptr;
         }
 
-        XPN_DEBUG_END_CUSTOM(file->m_path);
+        XPN_DEBUG_END_CUSTOM('\''<<file->m_path<<'\''<<" "<<entry.d_name);
         return &entry;
     }
 

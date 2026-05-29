@@ -25,6 +25,7 @@
 #include <optional>
 
 #include "base_cpp/debug.hpp"
+#include "base_cpp/filesystem.hpp"
 
 namespace XPN {
 inline int xpn_server_filesystem_lz4::compress(const char *src, char *dst, int srcSize, int dstCapacity) {
@@ -171,8 +172,27 @@ int64_t xpn_server_filesystem_lz4::pwrite(int fd, const void *buf, uint64_t len,
                                     << ((double)c_size / current_uncomp_sz));
 
         BlockHeader new_h = {(uint32_t)c_size, current_uncomp_sz};
-        m_backend->pwrite(fd, &new_h, META_SIZE, phys_pos);
-        m_backend->pwrite(fd, comp_scratch.get(), c_size, phys_pos + META_SIZE);
+
+        if (m_backend->m_mode == filesystem_mode::disk) {
+            struct iovec iov[2] = {{.iov_base = &new_h, .iov_len = META_SIZE},
+                                   {.iov_base = comp_scratch.get(), .iov_len = (uint32_t)c_size}};
+            auto ret = filesystem::pwritev(fd, iov, 2, phys_pos);
+            if (ret < 0) {
+                debug_info(" << END (" << fd << ", " << buf << ", " << len << ", " << offset << ") = " << ret);
+                return ret;
+            }
+        } else {
+            auto ret = m_backend->pwrite(fd, &new_h, META_SIZE, phys_pos);
+            if (ret < 0) {
+                debug_info(" << END (" << fd << ", " << buf << ", " << len << ", " << offset << ") = " << ret);
+                return ret;
+            }
+            ret = m_backend->pwrite(fd, comp_scratch.get(), c_size, phys_pos + META_SIZE);
+            if (ret < 0) {
+                debug_info(" << END (" << fd << ", " << buf << ", " << len << ", " << offset << ") = " << ret);
+                return ret;
+            }
+        }
 
         total_written += to_write;
     }
@@ -262,7 +282,7 @@ int64_t xpn_server_filesystem_lz4::pwrite_compressed_block(int fd, const void *c
     if (m_backend->m_mode == filesystem_mode::disk) {
         struct iovec iov[2] = {{.iov_base = &new_h, .iov_len = META_SIZE},
                                {.iov_base = const_cast<void *>(comp_buf), .iov_len = comp_size}};
-        int64_t written = pwritev(fd, iov, 2, phys_pos);
+        int64_t written = filesystem::pwritev(fd, iov, 2, phys_pos);
         if (written != (int64_t)(META_SIZE + comp_size)) {
             debug_info(" << END (" << fd << ", " << comp_buf << ", " << comp_size << ", " << uncomp_size << ", "
                                    << offset << ") = " << -1);
@@ -277,8 +297,7 @@ int64_t xpn_server_filesystem_lz4::pwrite_compressed_block(int fd, const void *c
         }
 
         // 4. Write the already-compressed data directly
-        int64_t written = m_backend->pwrite(fd, comp_buf, comp_size, phys_pos + META_SIZE);
-        if (written != (int64_t)comp_size) {
+        if (m_backend->pwrite(fd, comp_buf, comp_size, phys_pos + META_SIZE) != comp_size) {
             debug_info(" << END (" << fd << ", " << comp_buf << ", " << comp_size << ", " << uncomp_size << ", "
                                    << offset << ") = " << -1);
             return -1;

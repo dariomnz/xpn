@@ -45,6 +45,7 @@ namespace XPN
   constexpr const int KB = 1024;
   constexpr const int MB = (KB*KB);
   constexpr const int GB = (KB*MB);
+  constexpr const int MAX_BUFFERING_WRITES = (16*KB);
   constexpr const int MAX_BUFFER_SIZE = (512*KB);
   constexpr const int MAX_PORT_NAME = 1024;
   constexpr const int DEFAULT_XPN_SERVER_CONTROL_PORT = 3456;

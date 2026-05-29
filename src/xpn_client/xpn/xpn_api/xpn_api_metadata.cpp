@@ -46,10 +46,11 @@ namespace XPN
                 XPN_DEBUG("Retry read metadata in "<<master);
                 continue;
             }
+            if (res >= 0) {
+                XPN_DEBUG(mdata);
+            }
             break;
         }
-
-        XPN_DEBUG(mdata);
 
         XPN_DEBUG_END_CUSTOM(mdata.m_file.m_path);
         return res;

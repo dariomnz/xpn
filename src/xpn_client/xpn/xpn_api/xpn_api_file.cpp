@@ -39,6 +39,7 @@ namespace XPN
         }
 
         auto first_dir = xpn_path::remove_first_dir(path);
+        // XPN_DEBUG("First dir "<<first_dir);
         out_path.clear();
 
         if (!first_dir.empty() && first_dir[0] != '/') {
@@ -48,6 +49,7 @@ namespace XPN
         } else {
             out_path.append(first_dir);
         }
+        // XPN_DEBUG("In path '"<<path<<"' Out path '"<<out_path<<"'");
 
         return name_part;
     }
@@ -66,6 +68,8 @@ namespace XPN
         }
 
         std::shared_ptr<xpn_file> file = std::make_shared<xpn_file>(file_path, m_partitions.find(part_name)->second);
+        file->m_flags = flags;
+        file->m_mode = mode;
 
         if ((O_DIRECTORY != (flags & O_DIRECTORY))) {
             res = read_metadata(file->m_mdata);
@@ -75,9 +79,11 @@ namespace XPN
             }
 
             if(!file->m_mdata.m_data.is_valid()){
+                XPN_DEBUG("Fill metadata because is invalid");
                 file->m_mdata.m_data.fill(file->m_mdata);
             }else{
                 if ((O_TRUNC == (flags & O_TRUNC))) {
+                    XPN_DEBUG("O_TRUNC specified removing file");
                     // Remove all files to trucate and recreate
                     res = unlink(path);
                     if (res < 0) {
@@ -85,6 +91,9 @@ namespace XPN
                         return -1;
                     }
                     flags |= O_CREAT;
+                    mode = file->m_mdata.m_data.mode;
+                    file->m_flags = flags;
+                    file->m_mode = mode;
                     // Fill because file not exist here
                     file->m_mdata.m_data.fill(file->m_mdata);
                 }
@@ -113,6 +122,7 @@ namespace XPN
                 auto& serv = file->m_part.m_data_serv[i];
                 bool ok = tasks.launch([i, &serv, &file, flags, mode](){
                         int res = serv->nfi_open(file->m_path, flags, mode, file->m_data_vfh[i]);
+                        XPN_DEBUG("Open "<<file->m_path<<" "<<format_open_flags(flags)<<" "<<format_open_mode(mode)<<" = "<<res<<" "<<(res<0?strerror(errno):""));
                         if (res < 0 && serv->m_error < 0) res = replica_error;
                         return WorkerResult(res);
                 });
@@ -157,8 +167,6 @@ namespace XPN
         }else{
             file->m_type = file_type::file;
         }
-        file->m_flags = flags;
-        file->m_mode = mode;
         res = m_file_table.insert(file);
 
         XPN_DEBUG_END_CUSTOM(path<<", "<<format_open_flags(flags)<<", "<<format_open_mode(mode));
@@ -185,6 +193,12 @@ namespace XPN
             errno = EBADF;
             XPN_DEBUG_END_CUSTOM(fd);
             return -1;
+        }
+
+        res = fsync(*file);
+        if (res < 0) {
+            XPN_DEBUG_END_CUSTOM(fd);
+            return res;
         }
 
         if (file->m_links == 0) {
@@ -493,4 +507,35 @@ namespace XPN
         return res;
     }
 
+    int xpn_api::fsync(int fd) {
+        XPN_DEBUG_BEGIN_CUSTOM(fd);
+        int res = 0;
+
+        auto file = m_file_table.get(fd);
+        if (!file) {
+            errno = EBADF;
+            XPN_DEBUG_END_CUSTOM(fd);
+            return -1;
+        }
+
+        res = fsync(*file);
+
+        XPN_DEBUG_END_CUSTOM(fd);
+        return res;
+    }
+
+    int xpn_api::fsync(xpn_file& file) {
+        XPN_DEBUG_BEGIN_CUSTOM(file.m_path);
+        int res = 0;
+        if (file.m_buffering.offset != -1 && file.m_buffering.buffer.size() > 0) {
+            res = pwrite(file, file.m_buffering.buffer.data(), file.m_buffering.buffer.size(),
+                         file.m_buffering.offset, false);
+            if (res < 0) {
+                XPN_DEBUG_END_CUSTOM(file.m_path);
+                return res;
+            }
+        }
+        XPN_DEBUG_END_CUSTOM(file.m_path);
+        return res;
+    }
 } // namespace XPN

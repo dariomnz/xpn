@@ -86,6 +86,13 @@ namespace XPN
                         ret = file.m_part.m_data_serv[current_op.server_status]->nfi_read(
                             file, file.m_data_vfh[current_op.server_status], static_cast<char *>(current_op.buffer),
                             current_op.srv_offset + xpn_metadata::HEADER_SIZE, current_op.buffer_size);
+
+                        XPN_DEBUG("Read data from serv "
+                                  << current_op.server_status << " "
+                                  << file.m_part.m_data_serv[current_op.server_status]->m_server << ":"
+                                  << file.m_part.m_data_serv[current_op.server_status]->m_server_port << " size "
+                                  << current_op.buffer_size << " offset "
+                                  << (current_op.srv_offset + xpn_metadata::HEADER_SIZE) << " ret " << ret);
                     }
                     if (ret >= 0) {
                         return WorkerResult(ret);
@@ -150,10 +157,10 @@ namespace XPN
             return -1;
         }
 
-        return pwrite(*file, buffer, size, offset);
+        return pwrite(*file, buffer, size, offset, true);
     }
 
-    int64_t xpn_api::pwrite(xpn_file& file, const void *buffer, uint64_t size, int64_t offset)
+    int64_t xpn_api::pwrite(xpn_file& file, const void *buffer, uint64_t size, int64_t offset, bool canBuffer)
     {
         XPN_DEBUG_BEGIN_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
         int64_t res = 0;
@@ -165,6 +172,55 @@ namespace XPN
             if (file.m_type == file_type::dir) { errno = EISDIR; res = -1; }
             XPN_DEBUG_END_CUSTOM(file.m_path<<", "<<buffer<<", "<<size<<", "<<offset);
             return res;
+        }
+
+        if (canBuffer && xpn_env::get_instance().xpn_buffering_writes) {
+            auto &buffering = file.m_buffering;
+
+            std::unique_lock buffering_lock(buffering.mutex, std::try_to_lock);
+            if (buffering_lock.owns_lock()) {
+                // First op buffering
+                if (buffering.buffer.empty()) {
+                    if (size <= MAX_BUFFERING_WRITES) {
+                        // If buffering not started and small size
+                        buffering.buffer.insert(buffering.buffer.begin(), static_cast<const uint8_t *>(buffer),
+                                                static_cast<const uint8_t *>(buffer) + size);
+                        buffering.offset = offset;
+                        res = size;
+                        XPN_DEBUG("Buffering writes start size " << size << " offset " << offset);
+                        XPN_DEBUG_END_CUSTOM(file.m_path << ", " << buffer << ", " << size << ", " << offset);
+                        return res;
+                    }
+                } else {
+                    if (size <= MAX_BUFFERING_WRITES && buffering.buffer.size() + size >= MAX_BUFFER_SIZE) {
+                        // if overflow flush the buffer
+                        XPN_DEBUG("Buffering overflow, flush the buffer size " << buffering.buffer.size() << " offset " << buffering.offset);
+                        res = pwrite(file, buffering.buffer.data(), buffering.buffer.size(), buffering.offset, false);
+                        buffering.offset = -1;
+                        buffering.buffer.clear();
+                    }
+
+                    if ((buffering.offset + static_cast<int64_t>(buffering.buffer.size())) == offset) {
+                        if (size <= MAX_BUFFERING_WRITES) {
+                            // If buffering already started and small size append
+                            buffering.buffer.insert(buffering.buffer.end(), static_cast<const uint8_t *>(buffer),
+                            static_cast<const uint8_t *>(buffer) + size);
+                            res = size;
+                            XPN_DEBUG("Buffering append, size " << size << " offset " << buffering.offset<<" new size "<<buffering.buffer.size());
+                            XPN_DEBUG_END_CUSTOM(file.m_path << ", " << buffer << ", " << size << ", " << offset);
+                            return res;
+                        }
+                    } else {
+                        // if not next write flush buffer
+                        if (!buffering.buffer.empty()) {
+                            XPN_DEBUG("Buffering unordered write, flush the buffer size " << buffering.buffer.size() << " offset " << buffering.offset);
+                            res = pwrite(file, buffering.buffer.data(), buffering.buffer.size(), buffering.offset, false);
+                            buffering.offset = -1;
+                            buffering.buffer.clear();
+                        }
+                    }
+                }
+            }
         }
 
         constexpr uint32_t WINDOW_SIZE = 64;
@@ -192,6 +248,7 @@ namespace XPN
                 // while for replicas for THIS specific logical block atomically
                 while (rw_op.server_status != xpn_rw_operation::END && rw_op.buffer == current_block_ptr) {
                     rw_op = rw_calculator.next_write();
+                    if (rw_op.server_status == xpn_rw_operation::END) break;
 
                     bool ok = tasks.launch([&file, rw_op, block_window_index, &logical_block_bitmap]() {
                         XPN_DEBUG("Serv " << rw_op.server_status
@@ -203,6 +260,12 @@ namespace XPN
                             file, file.m_data_vfh[rw_op.server_status], static_cast<const char *>(rw_op.buffer),
                             rw_op.srv_offset + xpn_metadata::HEADER_SIZE, rw_op.buffer_size);
 
+                        XPN_DEBUG("Write data from serv "
+                                  << rw_op.server_status << " "
+                                  << file.m_part.m_data_serv[rw_op.server_status]->m_server << ":"
+                                  << file.m_part.m_data_serv[rw_op.server_status]->m_server_port << " size "
+                                  << rw_op.buffer_size << " offset " << (rw_op.srv_offset + xpn_metadata::HEADER_SIZE)
+                                  << " ret " << ret);
                         if (ret >= 0) {
                             uint64_t mask = 1ULL << block_window_index;
                             logical_block_bitmap.fetch_or(mask, std::memory_order_relaxed);
@@ -250,21 +313,20 @@ namespace XPN
         return res;
     }
 
-    int64_t xpn_api::write(int fd, const void *buffer, uint64_t size)
-    {
-        XPN_DEBUG_BEGIN_CUSTOM(fd<<", "<<buffer<<", "<<size);
+    int64_t xpn_api::write(int fd, const void *buffer, uint64_t size) {
+        XPN_DEBUG_BEGIN_CUSTOM(fd << ", " << buffer << ", " << size);
 
         int64_t res = 0;
 
         auto file = m_file_table.get(fd);
-        if (!file){
+        if (!file) {
             errno = EBADF;
             res = -1;
             XPN_DEBUG_END_CUSTOM(fd<<", "<<buffer<<", "<<size);
             return res;
         }
-        
-        res = pwrite(*file, buffer, size, file->m_offset);
+
+        res = pwrite(*file, buffer, size, file->m_offset, true);
 
         if(res > 0){
             file->m_offset += res;

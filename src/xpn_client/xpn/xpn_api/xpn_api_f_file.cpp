@@ -132,10 +132,14 @@ namespace XPN
         return res;
     }
 
-    int xpn_api::fflush([[maybe_unused]] FILE *stream)
+    int xpn_api::fflush(FILE *stream)
     {
         XPN_DEBUG_BEGIN;
         int res = 0;
+        res = fsync(stream->_fileno);
+        if (res < 0) {
+            res = EOF;
+        }
         XPN_DEBUG_END;
         return res;
     }

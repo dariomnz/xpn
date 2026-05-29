@@ -55,6 +55,7 @@ namespace XPN
             int32_t  distribution_policy = 0;                   // Distribution policy of blocks, default: round-robin
             uint64_t block_size = 0;                            // Size of block used
             uint64_t file_size = 0;                             // Size of the file
+            uint16_t mode = 0;                                  // Permisions
             uint8_t  compressed = 0;                            // Compressed in disk
             int32_t  data_nserv[MAX_RECONSTURCTIONS] = {0};     // Array of number of servers to reconstruct
             int32_t  offsets[MAX_RECONSTURCTIONS] = {0};        // Array indicating the block where new server configuration starts
@@ -68,19 +69,24 @@ namespace XPN
                 os <<"magic_number: " << d.magic_number[0] << d.magic_number[1] << d.magic_number[2] << std::endl;
                 os <<"version: " << d.version << std::endl;
                 os <<"type: " << d.type << std::endl;
+                os <<"mode: " << format_open_mode(d.mode) << std::endl;
                 os <<"block_size: " << d.block_size << std::endl;
                 os <<"file_size: " << d.file_size << std::endl;
                 os <<"replication_level: " << d.replication_level << std::endl;
+                os <<"compressed: " << d.compressed << std::endl;
                 os <<"first_node: " << d.first_node << std::endl;
                 os <<"distribution_policy: " << d.distribution_policy << std::endl;
                 os <<"data_nserv: ";
+                int how_many = 0;
                 for(int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
+                    if (d.data_nserv[i] == 0) break;
                     os << d.data_nserv[i] << " ";
+                    how_many++;
                 }
                 os << std::endl;
 
                 os <<"offsets: ";
-                for(int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
+                for(int i = 0; i < how_many; i++) {
                     os << d.offsets[i] << " ";
                 }
                 os << std::endl;
