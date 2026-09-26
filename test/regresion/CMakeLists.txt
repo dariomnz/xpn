@@ -1,5 +1,6 @@
 
 set(TESTS
+    block-placement
     init-destroy
     write-read
     fwrite-fread

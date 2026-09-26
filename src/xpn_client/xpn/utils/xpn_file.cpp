@@ -118,8 +118,9 @@ namespace XPN
     void xpn_file::map_offset_mdata(int64_t offset, int replication, int64_t &local_offset, int &serv)
     {
         // Without expand or shrink
-        if (m_mdata.m_data.data_nserv[1] == 0){
-            map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.data_nserv[0], offset, replication, m_mdata.m_data.first_node, local_offset, serv);
+        if (m_mdata.m_data.data_nserv[1] == 0) {
+            map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.data_nserv[0],
+                       offset, replication, m_mdata.m_data.first_node, local_offset, serv);
             return;
         }
 
@@ -139,8 +140,7 @@ namespace XPN
         int64_t aux_local_offset = 0;
         int64_t array_local_offset[xpn_metadata::MAX_RECONSTURCTIONS] = {0};
 
-        for (int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++)
-        {	
+        for (int i = 0; i < xpn_metadata::MAX_RECONSTURCTIONS; i++) {
             // stop when there are no more reconfigurations
             if (m_mdata.m_data.data_nserv[i] == 0) break;
             // negative servers is calculated in the positive next serv
@@ -149,136 +149,170 @@ namespace XPN
             // calculate actual conf and prev
             is_shrink = 0;
             is_expand = 0;
-            if (i > 0 && m_mdata.m_data.data_nserv[i-1] < 0){
+            if (i > 0 && m_mdata.m_data.data_nserv[i - 1] < 0) {
                 is_shrink = 1;
-            }else{
+            } else {
                 is_expand = 1;
             }
 
             // calculate if the block is in the actual data_nserv
-            if (m_mdata.m_data.data_nserv[i+1] > 0){
-                if (actual_index == -1 && (block_num > m_mdata.m_data.offsets[i] || block_num == 0) && (block_num <= m_mdata.m_data.offsets[i+1] || m_mdata.m_data.offsets[i+1] == 0)){
+            if (m_mdata.m_data.data_nserv[i + 1] > 0) {
+                if (actual_index == -1 && (block_num > m_mdata.m_data.offsets[i] || block_num == 0) &&
+                    (block_num <= m_mdata.m_data.offsets[i + 1] || m_mdata.m_data.offsets[i + 1] == 0)) {
                     actual_index = i;
                 }
-            }else{
-                if (actual_index == -1 && (block_num > m_mdata.m_data.offsets[i] || block_num == 0) && (block_num <= m_mdata.m_data.offsets[i+2] || m_mdata.m_data.offsets[i+2] == 0)){
+            } else {
+                if (actual_index == -1 && (block_num > m_mdata.m_data.offsets[i] || block_num == 0) &&
+                    (block_num <= m_mdata.m_data.offsets[i + 2] || m_mdata.m_data.offsets[i + 2] == 0)) {
                     actual_index = i;
                 }
             }
 
             // check offset for expansions to add or substract
             prev_data_nserv = -1;
-            if (is_expand){
-                if (i-1 >= 0){
-                    prev_data_nserv = m_mdata.m_data.data_nserv[i-1];
-                    if (i-1 == 0){
+            if (is_expand) {
+                if (i - 1 >= 0) {
+                    prev_data_nserv = m_mdata.m_data.data_nserv[i - 1];
+                    if (i - 1 == 0) {
                         prev_block_num = m_mdata.m_data.offsets[i];
-                    }else{
-                        prev_block_num = m_mdata.m_data.offsets[i] - m_mdata.m_data.offsets[i-1] - 1;
+                    } else {
+                        prev_block_num = m_mdata.m_data.offsets[i] - m_mdata.m_data.offsets[i - 1] - 1;
                     }
                     // if prev shrink count that blocks
-                    if (i-2 >= 0 && m_mdata.m_data.data_nserv[i-2] < 0){
-                        prev_block_num += m_mdata.m_data.offsets[i-2];
+                    // (shrink offsets count copies, convert to blocks)
+                    if (i - 2 >= 0 && m_mdata.m_data.data_nserv[i - 2] < 0) {
+                        prev_block_num += m_mdata.m_data.offsets[i - 2] / (m_mdata.m_data.replication_level + 1);
                     }
                 }
-            }else{
-                if (i-2 >= 0){
-                    prev_data_nserv = m_mdata.m_data.data_nserv[i-2];
-                    if (i-2 == 0){
+            } else {
+                if (i - 2 >= 0) {
+                    prev_data_nserv = m_mdata.m_data.data_nserv[i - 2];
+                    if (i - 2 == 0) {
                         prev_block_num = m_mdata.m_data.offsets[i];
-                    }else{
-                        prev_block_num = m_mdata.m_data.offsets[i] - m_mdata.m_data.offsets[i-2] - 1;
+                    } else {
+                        prev_block_num = m_mdata.m_data.offsets[i] - m_mdata.m_data.offsets[i - 2] - 1;
                     }
                     // if prev shrink count that blocks
-                    if (i-3 >= 0 && m_mdata.m_data.data_nserv[i-3] < 0){
-                        prev_block_num += m_mdata.m_data.offsets[i-3];
+                    // (shrink offsets count copies, convert to blocks)
+                    if (i - 3 >= 0 && m_mdata.m_data.data_nserv[i - 3] < 0) {
+                        prev_block_num += m_mdata.m_data.offsets[i - 3] / (m_mdata.m_data.replication_level + 1);
                     }
                 }
             }
 
             // Calculate offset of segment
-            if (prev_data_nserv != -1){
-                map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, prev_data_nserv, prev_block_num*m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.first_node, aux_local_offset, aux_serv);
-                acum_local_offset += aux_local_offset + m_mdata.m_data.block_size; 
+            if (prev_data_nserv != -1) {
+                map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, prev_data_nserv,
+                           prev_block_num * m_mdata.m_data.block_size, m_mdata.m_data.replication_level,
+                           m_mdata.m_data.first_node, aux_local_offset, aux_serv);
+                acum_local_offset += aux_local_offset + m_mdata.m_data.block_size;
                 array_local_offset[i] = acum_local_offset;
             }
 
-            
-
             // Calculate local_offset and serv
-            if (actual_index != -1 && i == actual_index){
+            if (actual_index != -1 && i == actual_index) {
                 // change offset to new segment of blocks
-                if (i != 0){
-                    offset-= m_mdata.m_data.block_size*(m_mdata.m_data.offsets[i] + 1);
-                    if (is_shrink){
-                        offset+= m_mdata.m_data.block_size*(m_mdata.m_data.offsets[i-1]);
+                if (i != 0) {
+                    offset -= m_mdata.m_data.block_size * (m_mdata.m_data.offsets[i] + 1);
+                    if (is_shrink) {
+                        // offsets of a shrink entry count copies on the removed server.
+                        // Shift in copy units so odd counts stay exact: total copies =
+                        // rel_block * (R+1) + replication + moved copies, then back
+                        // to (block, replication).
+                        int64_t copies_per_block = (int64_t)m_mdata.m_data.replication_level + 1;
+                        int64_t rel_block = offset / (int64_t)m_mdata.m_data.block_size;
+                        int64_t intra_block = offset % (int64_t)m_mdata.m_data.block_size;
+                        int64_t total = rel_block * copies_per_block + replication + m_mdata.m_data.offsets[i - 1];
+                        offset = (total / copies_per_block) * (int64_t)m_mdata.m_data.block_size + intra_block;
+                        replication = (int)(total % copies_per_block);
                     }
                 }
-                map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.data_nserv[i], offset, replication, m_mdata.m_data.first_node, local_offset, serv);
+                map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.data_nserv[i],
+                           offset, replication, m_mdata.m_data.first_node, local_offset, serv);
                 // Add offset
                 local_offset += array_local_offset[i];
                 // Substract offset if necesary
-                for (int j = i; j >= 0; j--)
-                {
-
+                for (int j = i; j >= 0; j--) {
                     if (m_mdata.m_data.data_nserv[j] == 0) break;
                     aux_is_shrink = 0;
                     aux_is_expand = 0;
-                    if (j > 0 && m_mdata.m_data.data_nserv[j-1] < 0){
+                    if (j > 0 && m_mdata.m_data.data_nserv[j - 1] < 0) {
                         aux_is_shrink = 1;
-                    }else{
+                    } else {
                         aux_is_expand = 1;
                     }
-                    
-                    if (aux_is_expand == 1){
-                        if (j-1 >= 0 && (serv) > (m_mdata.m_data.data_nserv[j-1] - 1) && (serv) <= (m_mdata.m_data.data_nserv[j] - 1)){
+
+                    if (aux_is_expand == 1) {
+                        if (j - 1 >= 0 && (serv) > (m_mdata.m_data.data_nserv[j - 1] - 1) &&
+                            (serv) <= (m_mdata.m_data.data_nserv[j] - 1)) {
                             local_offset -= array_local_offset[j];
                             break;
                         }
-                    }
-                    else if (aux_is_shrink == 1){
-                        if (j-3 >= 0 && m_mdata.m_data.data_nserv[j-3] > 0)
-                        if (j-2 >= 0 && (serv) == (m_mdata.m_data.data_nserv[j] - 1)){
-                            local_offset -= array_local_offset[j-2];
-                            break;
-                        }
+                    } else if (aux_is_shrink == 1) {
+                        if (j - 3 >= 0 && m_mdata.m_data.data_nserv[j - 3] > 0)
+                            if (j - 2 >= 0 && (serv) == (m_mdata.m_data.data_nserv[j] - 1)) {
+                                local_offset -= array_local_offset[j - 2];
+                                break;
+                            }
                     }
                 }
 
-
-            }else{
-                if (is_shrink){
+            } else {
+                if (is_shrink) {
                     // Recalculate to reconfigure shrink
-                    if ((serv) == (abs(m_mdata.m_data.data_nserv[i-1]) - 1)){
-                        map_offset(m_mdata.m_data.block_size, m_mdata.m_data.replication_level, m_mdata.m_data.data_nserv[i], local_offset, replication, m_mdata.m_data.first_node, local_offset, serv);
-                        
+                    if ((serv) == (abs(m_mdata.m_data.data_nserv[i - 1]) - 1)) {
+                        // Evacuated copies are redistributed plain round-robin following
+                        // their order on the removed server, so map them without replication
+                        map_offset(m_mdata.m_data.block_size, 0, m_mdata.m_data.data_nserv[i], local_offset, 0,
+                                   m_mdata.m_data.first_node, local_offset, serv);
+
                         // Add or substract offset
                         local_offset += array_local_offset[i];
                         aux_local_offset = local_offset;
 
-                        // Reduce offset
-                        if (i-3 >= 0 && m_mdata.m_data.data_nserv[i-3] > 0)
-                        if (i-2 >= 0 && (serv) == (m_mdata.m_data.data_nserv[i] - 1)){
-                            local_offset -= array_local_offset[i-2];
+                        // Substract offset if necesary (same compensation as
+                        // fresh blocks: servers added by an expand do not
+                        // share the base accumulated before they joined)
+                        for (int j = i; j >= 0; j--) {
+                            if (m_mdata.m_data.data_nserv[j] == 0) break;
+                            aux_is_shrink = 0;
+                            aux_is_expand = 0;
+                            if (j > 0 && m_mdata.m_data.data_nserv[j - 1] < 0) {
+                                aux_is_shrink = 1;
+                            } else {
+                                aux_is_expand = 1;
+                            }
+
+                            if (aux_is_expand == 1) {
+                                if (j - 1 >= 0 && (serv) > (m_mdata.m_data.data_nserv[j - 1] - 1) &&
+                                    (serv) <= (m_mdata.m_data.data_nserv[j] - 1)) {
+                                    local_offset -= array_local_offset[j];
+                                    break;
+                                }
+                            } else if (aux_is_shrink == 1) {
+                                if (j - 3 >= 0 && m_mdata.m_data.data_nserv[j - 3] > 0)
+                                    if (j - 2 >= 0 && (serv) == (m_mdata.m_data.data_nserv[j] - 1)) {
+                                        local_offset -= array_local_offset[j - 2];
+                                        break;
+                                    }
+                            }
                         }
-                        
-                    }else if ((serv) > (abs(m_mdata.m_data.data_nserv[i-1]) - 1)){
+
+                    } else if ((serv) > (abs(m_mdata.m_data.data_nserv[i - 1]) - 1)) {
                         (serv)--;
                     }
                 }
             }
-            
 
             // if shrink greater than the actual config change block
             have_greatter_shrink = 0;
-            for (int j = i; j < xpn_metadata::MAX_RECONSTURCTIONS; j++)
-            {
+            for (int j = i; j < xpn_metadata::MAX_RECONSTURCTIONS; j++) {
                 if (m_mdata.m_data.data_nserv[j] == 0) break;
                 if (m_mdata.m_data.data_nserv[j] < 0) have_greatter_shrink = 1;
             }
 
             // if not greatter shrink and block calculated break
-            if (i == actual_index && have_greatter_shrink == 0){
+            if (i == actual_index && have_greatter_shrink == 0) {
                 break;
             }
         }

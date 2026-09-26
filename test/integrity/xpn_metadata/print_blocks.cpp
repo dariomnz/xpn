@@ -23,8 +23,18 @@ int main ( int argc, char *argv[] )
     int blocks = atoi(argv[1]);
     const char *delim = ";";
     printf("Print %d blocks in %s servers with %s offset and %s replication level\n", blocks, argv[2], argv[3], argv[4]);
+    int replication_level = atoi(argv[4]);
+
+    part.m_replication_level = replication_level;
+    memcpy(&file.m_mdata.m_data.magic_number, xpn_metadata::MAGIC_NUMBER, 3);
+    
+    part.m_data_serv.resize(1);
+    file.m_mdata.m_data.fill(file.m_mdata);
+    file.m_mdata.m_data.first_node = 0;
+    int last_serv = 0;
     if (strchr(argv[2], delim[0])==NULL){
-        file.m_mdata.m_data.data_nserv[0] = atoi(argv[2]);
+        last_serv = atoi(argv[2]);
+        file.m_mdata.m_data.data_nserv[0] = last_serv;
     }else{
         char *token = strtok(argv[2], delim);
         int index = 0;
@@ -33,7 +43,8 @@ int main ( int argc, char *argv[] )
                 printf("Too much num serv %s\n", argv[2]);
                 exit(EXIT_FAILURE);
             }
-            file.m_mdata.m_data.data_nserv[index++] = atoi(token);
+            last_serv = atoi(token);
+            file.m_mdata.m_data.data_nserv[index++] = last_serv;
             token = strtok(NULL, delim);
         }
     }
@@ -52,16 +63,9 @@ int main ( int argc, char *argv[] )
             token = strtok(NULL, delim);
         }
     }
-    int replication_level = atoi(argv[4]);
-
-    part.m_replication_level = replication_level;
-    part.m_data_serv.resize(file.m_mdata.m_data.data_nserv[0]);
-    memcpy(&file.m_mdata.m_data.magic_number, xpn_metadata::MAGIC_NUMBER, 3);
-
-    file.m_mdata.m_data.fill(file.m_mdata);
-    file.m_mdata.m_data.first_node = 0;
 
     std::cout << file.m_mdata << std::endl;
+    part.m_data_serv.resize(last_serv);
 
     std::cout << file.m_mdata.to_string_blocks(blocks) << std::endl;
 

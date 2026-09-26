@@ -73,7 +73,7 @@ namespace XPN
                 os <<"block_size: " << d.block_size << std::endl;
                 os <<"file_size: " << d.file_size << std::endl;
                 os <<"replication_level: " << d.replication_level << std::endl;
-                os <<"compressed: " << d.compressed << std::endl;
+                os <<"compressed: " << (d.compressed == 0 ? "false" : "true") << std::endl;
                 os <<"first_node: " << d.first_node << std::endl;
                 os <<"distribution_policy: " << d.distribution_policy << std::endl;
                 os <<"data_nserv: ";

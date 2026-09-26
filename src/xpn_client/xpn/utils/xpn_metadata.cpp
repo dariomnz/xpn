@@ -76,9 +76,9 @@ namespace XPN
         for (int i = 0; i < blocks; i++)
         {
             offset = i * m_data.block_size;
-            check_sum_1 += i;
             for (int j = 0; j < (m_data.replication_level+1); j++)
             {   
+                check_sum_1 += i;
                 m_file.map_offset_mdata(offset, j, local_offset, serv);
                 local_offset /= m_data.block_size;
                 auto &vec = queues[serv];

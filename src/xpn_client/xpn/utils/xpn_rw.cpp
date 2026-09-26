@@ -146,7 +146,7 @@ xpn_rw_operation xpn_rw_calculator::next_replica(xpn_rw_operation failed_op) {
         next_op.current_replica++;
         next_op.replica_tries++;
 
-        m_file.map_offset_mdata(next_op.file_offset, next_op.current_replica % max_replicas, next_op.srv_offset,
+        m_file.map_offset_mdata(next_op.file_offset, next_op.current_replica % (max_replicas + 1), next_op.srv_offset,
                                 next_op.server_status);
 
         if (m_file.m_part.m_data_serv[next_op.server_status]->m_error == 0) {
